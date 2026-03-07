@@ -10,7 +10,7 @@ Fastest host loop:
 pnpm --filter @qaongdur/web dev
 ```
 
-This is still the default mock-data path. The page layer uses the in-browser `mockApiClient`, so no API server is required for dashboard, alerts, incidents, playback, and device screens.
+If `VITE_CONTROL_API_BASE_URL` is not configured, this uses the in-browser `mockApiClient`, so no API server is required.
 
 Containerized runtime:
 
@@ -34,10 +34,13 @@ pnpm --filter @qaongdur/web dev
 
 ## Current Integration Mode
 
-- primary product UI is fully implemented with realistic mock data
+- UI-only mode remains fully mock-backed
 - Keycloak browser auth is live
 - control-api auth validation is live
-- main VMS data routes still use the typed mock adapter while the backend domain APIs are being built
+- with a configured backend, camera inventory, live tiles, overview, playback search, and devices come from `control-api`
+- camera create, reconnect, and remove actions go directly to `control-api`
+- alerts and incidents still return placeholder backend responses while the full detection and incident pipeline is being built
+- the Devices page exposes reconnect and remove actions only for `site-admin` and `platform-admin`
 
 ## Build And Lint
 

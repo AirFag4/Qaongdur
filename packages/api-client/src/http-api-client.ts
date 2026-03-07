@@ -67,6 +67,18 @@ export class HttpApiClient implements VmsApiClient {
     });
   }
 
+  async reconnectCamera(cameraId: string): Promise<Camera> {
+    return this._request(`/api/v1/cameras/${cameraId}/reconnect`, {
+      method: "POST",
+    });
+  }
+
+  async deleteCamera(cameraId: string): Promise<void> {
+    await this._request(`/api/v1/cameras/${cameraId}`, {
+      method: "DELETE",
+    });
+  }
+
   async listLiveTiles(siteId?: string): Promise<LiveStreamTile[]> {
     return this._request(appendSearch("/api/v1/live-tiles", { siteId }));
   }

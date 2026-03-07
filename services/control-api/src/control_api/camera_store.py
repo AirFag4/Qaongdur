@@ -31,6 +31,12 @@ class CameraStore:
         payload = self._read_payload()
         return [CameraRecord(**item) for item in payload.get("cameras", [])]
 
+    def get_camera(self, camera_id: str) -> CameraRecord | None:
+        return next(
+            (camera for camera in self.list_cameras() if camera.id == camera_id),
+            None,
+        )
+
     def prepare_camera(
         self,
         *,
@@ -56,6 +62,27 @@ class CameraStore:
             cameras = payload.setdefault("cameras", [])
             cameras.append(asdict(camera))
             self._write_payload(payload)
+
+    def delete_camera(self, camera_id: str) -> CameraRecord | None:
+        with self._lock:
+            payload = self._read_payload()
+            cameras = payload.setdefault("cameras", [])
+            retained: list[dict[str, object]] = []
+            deleted: CameraRecord | None = None
+
+            for item in cameras:
+                record = CameraRecord(**item)
+                if record.id == camera_id and deleted is None:
+                    deleted = record
+                    continue
+                retained.append(item)
+
+            if deleted is None:
+                return None
+
+            payload["cameras"] = retained
+            self._write_payload(payload)
+            return deleted
 
     def _read_payload(self) -> dict[str, object]:
         if not self._path.exists():

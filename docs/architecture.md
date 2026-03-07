@@ -8,7 +8,7 @@ This monorepo is organized around a single product surface (video operations con
 - `packages/types`: Shared TypeScript domain models and API DTOs.
 - `packages/api-client`: Typed adapters that hide data sources (mock now, backend later).
 - `packages/ui`: Shared UI primitives and domain components reused by pages.
-- `services/control-api`: FastAPI control plane service with auth validation, persisted RTSP camera inventory, MediaMTX path reconciliation, playback search, approval examples, and room for the rest of the VMS APIs.
+- `services/control-api`: FastAPI control plane service with auth validation, a currently file-backed RTSP camera inventory, MediaMTX path reconciliation, playback search, approval examples, and room for the rest of the VMS APIs.
 - `services/vision`: FastAPI vision scaffold with demo pipeline endpoints and room for full ingest + model inference workflows.
 - `services/agent`: Planned in-app agent orchestration and tool-calling.
 - `infra/docker`, `infra/keycloak`, `infra/mediamtx`: Infrastructure setup areas.
@@ -42,9 +42,13 @@ Plan for two ingest and recording modes from the start:
 
 Current implemented slice:
 
-- `control-api` persists camera definitions and rehydrates missing MediaMTX paths after a relay restart
+- `control-api` persists camera definitions, supports reconnect and remove actions, and rehydrates missing MediaMTX paths after a relay restart
 - MediaMTX serves live HLS and playback URLs for recorded spans
 - the web console can add RTSP cameras, view live video, and search playback against this local media path
+
+Current known limitation:
+
+- the relay path is configured with RTSP transport forced to `tcp`, so some cameras may need per-camera transport selection or a different vendor RTSP path before they remain stable
 
 ## Storage Direction
 

@@ -120,12 +120,18 @@ Self-registration is currently disabled in the imported realm.
 ## Role Model
 
 - `platform-admin`: global admin and destructive operations
-- `site-admin`: site-scoped admin and approval flows
+- `site-admin`: site-scoped admin, camera management, and approval flows
 - `operator`: monitoring and standard response
 - `reviewer`: evidence and incident approvals
 - `viewer`: read-only access
 
 Frontend role-gating is only a UX convenience. The control API validates the bearer token and checks roles again before allowing protected actions.
+
+Current camera-management actions that require `site-admin` or `platform-admin`:
+
+- add camera
+- reconnect camera
+- remove camera
 
 ## Passkeys
 

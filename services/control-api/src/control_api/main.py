@@ -141,6 +141,7 @@ def _serialize_device(camera: dict[str, object]) -> dict[str, object]:
     health = str(camera["health"])
     return {
         "id": f"dev-{camera['id']}",
+        "cameraId": camera["id"],
         "siteId": camera["siteId"],
         "name": camera["name"],
         "type": "camera",
@@ -217,6 +218,16 @@ def _serialize_playback_segment(
         "durationSec": span.duration,
         "playbackUrl": span.playback_url,
     }
+
+
+def _get_camera_or_404(camera_store: CameraStore, camera_id: str) -> CameraRecord:
+    record = camera_store.get_camera(camera_id)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Camera {camera_id} was not found.",
+        )
+    return record
 
 
 async def _list_path_states(
@@ -329,6 +340,62 @@ def create_app() -> FastAPI:
 
         camera_store.save_camera(record)
         return _serialize_camera(record, None, media_client)
+
+    @app.post("/api/v1/cameras/{camera_id}/reconnect")
+    async def reconnect_camera(
+        camera_id: str,
+        _: Annotated[
+            KeycloakPrincipal,
+            Depends(require_roles("site-admin", "platform-admin")),
+        ],
+        camera_store: Annotated[CameraStore, Depends(get_camera_store)],
+        media_client: Annotated[MediaMtxClient, Depends(get_mediamtx_client)],
+    ) -> dict[str, object]:
+        record = _get_camera_or_404(camera_store, camera_id)
+
+        try:
+            await media_client.reconnect_camera_path(
+                path_name=record.path_name,
+                source=record.rtsp_url,
+            )
+            path_states = await media_client.list_paths()
+        except MediaMtxError as error:
+            raise raise_as_bad_gateway(error) from error
+
+        return _serialize_camera(record, path_states.get(record.path_name), media_client)
+
+    @app.delete("/api/v1/cameras/{camera_id}")
+    async def delete_camera(
+        camera_id: str,
+        _: Annotated[
+            KeycloakPrincipal,
+            Depends(require_roles("site-admin", "platform-admin")),
+        ],
+        camera_store: Annotated[CameraStore, Depends(get_camera_store)],
+        media_client: Annotated[MediaMtxClient, Depends(get_mediamtx_client)],
+    ) -> dict[str, object]:
+        record = _get_camera_or_404(camera_store, camera_id)
+
+        try:
+            await media_client.delete_camera_path(
+                path_name=record.path_name,
+                ignore_missing=True,
+            )
+        except MediaMtxError as error:
+            raise raise_as_bad_gateway(error) from error
+
+        deleted_record = camera_store.delete_camera(camera_id)
+        if deleted_record is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Camera {camera_id} was removed before the delete completed.",
+            )
+
+        return {
+            "deleted": True,
+            "cameraId": deleted_record.id,
+            "name": deleted_record.name,
+        }
 
     @app.get("/api/v1/live-tiles")
     async def list_live_tiles(

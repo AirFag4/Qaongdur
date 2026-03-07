@@ -42,15 +42,15 @@ Current package exports:
 Current behavior:
 
 - `createApiClient()` returns the singleton `mockApiClient` when no backend config is provided.
-- when `baseUrl` and `getAccessToken` are provided, the client uses the real HTTP backend first and only falls back to mocks on network failure for read-only queries.
+- when `baseUrl` and `getAccessToken` are provided, the client uses the real HTTP backend for camera inventory, live tiles, overview, playback search, devices, and camera mutations, and only falls back to mocks on network failure for read-only queries.
 - `createRealtimeSocket()` always returns a `MockRealtimeEventSocket`.
-- `createCamera()` is backend-only and does not fall back to the mock adapter.
+- when a real backend is configured, `createCamera()`, `reconnectCamera()`, and `deleteCamera()` do not fall back to the mock adapter.
 
 Current run modes:
 
 - UI-only mock mode: start `pnpm --filter @qaongdur/web dev`
 - hybrid auth mode: start Keycloak and `services/control-api`, then run the web app locally
-- core container mode: run `make docker-up`, which starts real auth and infrastructure services while the web UI still uses mock business data for most route-level screens
+- core container mode: run `make docker-up`, which starts the full local stack and uses the real backend for camera, live, overview, playback, and device routes
 
 ### `VmsApiClient`
 
@@ -61,12 +61,14 @@ The frontend only talks to the data layer through this interface:
 | `listSites()` | none | `Promise<Site[]>` | returns all sites | layout bootstrapping |
 | `listCameras(siteId?)` | optional `siteId` | `Promise<Camera[]>` | returns all cameras or a site-scoped subset | layout bootstrapping, site switcher |
 | `createCamera(input)` | `CreateCameraInput` | `Promise<Camera>` | creates a persisted RTSP camera through the backend | devices page |
+| `reconnectCamera(cameraId)` | camera id | `Promise<Camera>` | rebuilds the MediaMTX path for an existing camera | devices page |
+| `deleteCamera(cameraId)` | camera id | `Promise<void>` | removes the camera from backend storage and MediaMTX | devices page |
 | `listLiveTiles(siteId?)` | optional `siteId` | `Promise<LiveStreamTile[]>` | returns live stream state and detections | live page |
 | `getOverview(siteId?)` | optional `siteId` | `Promise<OverviewSnapshot>` | computes summary metrics, incidents, alerts, and health buckets | overview page |
 | `listAlerts(filter?)` | `AlertFilter` | `Promise<AlertEvent[]>` | supports site, camera, severity, status, and text filtering | alerts page, live side rail |
 | `listIncidents()` | none | `Promise<Incident[]>` | returns all incidents | incident page list |
 | `getIncidentById(id)` | incident id | `Promise<Incident \| undefined>` | finds one incident in mock storage | incident detail page |
-| `searchPlayback(params)` | `PlaybackSearchParams` | `Promise<PlaybackSegment[]>` | returns generated 15-minute buckets | playback page |
+| `searchPlayback(params)` | `PlaybackSearchParams` | `Promise<PlaybackSegment[]>` | returns MediaMTX recording spans in backend mode and generated 15-minute buckets in mock mode | playback page |
 | `listDevices(siteId?)` | optional `siteId` | `Promise<Device[]>` | returns all devices or a site-scoped subset | devices page |
 
 ### `RealtimeEventSocket`
@@ -205,6 +207,7 @@ All of the following types live in `packages/types/src/index.ts`.
 ### `Device`
 
 - `id: string`
+- `cameraId?: string`
 - `siteId: string`
 - `name: string`
 - `type: DeviceType`
@@ -270,7 +273,7 @@ The frontend route layer is already stable and should be treated as the first co
 | `/incidents` | Incident detail | `listIncidents()` then `getIncidentById(id)` | redirects to first incident if no id is present |
 | `/incidents/:incidentId` | Incident detail | `listIncidents()`, `getIncidentById(id)` | detail page |
 | `/playback` | Playback search | `searchPlayback(params)` | query runs only after form submit |
-| `/devices` | Devices | `listDevices(siteId)` | search and type filter are local UI filters |
+| `/devices` | Devices | `listDevices(siteId)`, `createCamera(input)`, `reconnectCamera(cameraId)`, `deleteCamera(cameraId)` | search and type filter are local UI filters; reconnect and remove are admin-only |
 
 ### Layout bootstrapping
 
@@ -389,17 +392,21 @@ Current state:
 - `services/control-api` validates Keycloak-issued bearer tokens through OIDC discovery and JWKS
 - implemented auth endpoints include `GET /api/v1/auth/me` and `GET /api/v1/auth/allowed-actions`
 - implemented approval examples include `POST /api/v1/agent/actions/evidence-export` and `POST /api/v1/agent/actions/purge-evidence`
-- the main CRUD APIs for sites, cameras, alerts, incidents, playback, and devices are still not implemented in the backend yet
+- implemented domain endpoints now cover sites, cameras, live tiles, overview, playback search, and devices
+- alerts and incidents currently return placeholder backend responses rather than a full detection-to-incident workflow
 
 ### REST endpoints
 
-Recommended next domain endpoints:
+Current implemented and recommended next domain endpoints:
 
 | Method | Path | Request | Response | Maps to |
 | --- | --- | --- | --- | --- |
 | `GET` | `/api/v1/sites` | none | `Site[]` | `listSites()` |
 | `GET` | `/api/v1/cameras` | query: `siteId?` | `Camera[]` | `listCameras(siteId?)` |
-| `GET` | `/api/v1/live/tiles` | query: `siteId?` | `LiveStreamTile[]` | `listLiveTiles(siteId?)` |
+| `POST` | `/api/v1/cameras` | body: `CreateCameraInput` | `Camera` | `createCamera(input)` |
+| `POST` | `/api/v1/cameras/:cameraId/reconnect` | path param | `Camera` | `reconnectCamera(cameraId)` |
+| `DELETE` | `/api/v1/cameras/:cameraId` | path param | `{ deleted, cameraId, name }` | `deleteCamera(cameraId)` |
+| `GET` | `/api/v1/live-tiles` | query: `siteId?` | `LiveStreamTile[]` | `listLiveTiles(siteId?)` |
 | `GET` | `/api/v1/overview` | query: `siteId?` | `OverviewSnapshot` | `getOverview(siteId?)` |
 | `GET` | `/api/v1/alerts` | query: `siteId?`, `cameraId?`, `severity?`, `status?`, `search?` | `AlertEvent[]` | `listAlerts(filter?)` |
 | `GET` | `/api/v1/incidents` | none | `Incident[]` | `listIncidents()` |
@@ -462,7 +469,7 @@ Recommended minimum endpoints:
 Current state:
 
 - `GET /healthz` is implemented in `services/control-api`
-- `GET /readyz` is still recommended follow-up work
+- `GET /readyz` is implemented in `services/control-api`
 
 Recommended response:
 
@@ -598,7 +605,7 @@ export class HttpVmsApiClient implements VmsApiClient {
   }
 
   async listLiveTiles(siteId?: string) {
-    return this.get("/api/v1/live/tiles", { siteId });
+    return this.get("/api/v1/live-tiles", { siteId });
   }
 
   async getOverview(siteId?: string) {

@@ -21,11 +21,23 @@ export function DevicesPage() {
   const [sorting, setSorting] = useState<SortingState>([{ id: "health", desc: false }]);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [cameraActionMessage, setCameraActionMessage] = useState<string | null>(null);
+  const [cameraActionError, setCameraActionError] = useState<string | null>(null);
   const [draft, setDraft] = useState({
     name: "",
     zone: "",
     rtspUrl: "",
   });
+
+  const invalidateOperationalQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["cameras"] }),
+      queryClient.invalidateQueries({ queryKey: ["devices"] }),
+      queryClient.invalidateQueries({ queryKey: ["live-tiles"] }),
+      queryClient.invalidateQueries({ queryKey: ["overview"] }),
+      queryClient.invalidateQueries({ queryKey: ["playback"] }),
+    ]);
+  };
 
   const devices = useQuery({
     queryKey: queryKeys.devices(siteId),
@@ -46,15 +58,55 @@ export function DevicesPage() {
         rtspUrl: draft.rtspUrl.trim(),
       });
     },
+    onMutate: () => {
+      setCameraActionError(null);
+      setCameraActionMessage(null);
+    },
     onSuccess: async () => {
       setDraft({ name: "", zone: "", rtspUrl: "" });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["cameras"] }),
-        queryClient.invalidateQueries({ queryKey: ["devices"] }),
-        queryClient.invalidateQueries({ queryKey: ["live-tiles"] }),
-        queryClient.invalidateQueries({ queryKey: ["overview"] }),
-        queryClient.invalidateQueries({ queryKey: ["playback"] }),
-      ]);
+      await invalidateOperationalQueries();
+    },
+  });
+
+  const reconnectCamera = useMutation({
+    mutationFn: async (camera: { cameraId: string; name: string }) =>
+      apiClient.reconnectCamera(camera.cameraId),
+    onMutate: () => {
+      setCameraActionError(null);
+      setCameraActionMessage(null);
+    },
+    onSuccess: async (_camera, variables) => {
+      setCameraActionMessage(`Reconnect requested for ${variables.name}.`);
+      await invalidateOperationalQueries();
+    },
+    onError: (error, variables) => {
+      setCameraActionError(
+        error instanceof Error
+          ? error.message
+          : `Reconnect failed for ${variables.name}.`,
+      );
+    },
+  });
+
+  const deleteCamera = useMutation({
+    mutationFn: async (camera: { cameraId: string; name: string }) => {
+      await apiClient.deleteCamera(camera.cameraId);
+      return camera;
+    },
+    onMutate: () => {
+      setCameraActionError(null);
+      setCameraActionMessage(null);
+    },
+    onSuccess: async (camera) => {
+      setCameraActionMessage(`Camera ${camera.name} removed.`);
+      await invalidateOperationalQueries();
+    },
+    onError: (error, variables) => {
+      setCameraActionError(
+        error instanceof Error
+          ? error.message
+          : `Remove failed for ${variables.name}.`,
+      );
     },
   });
 
@@ -106,8 +158,72 @@ export function DevicesPage() {
         header: "Uptime",
         cell: ({ row }) => <span className="text-xs">{row.original.uptimePct.toFixed(2)}%</span>,
       },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }) => {
+          const cameraId = row.original.cameraId;
+          if (row.original.type !== "camera" || !cameraId) {
+            return <span className="text-[11px] text-stone-600">-</span>;
+          }
+
+          const reconnectPending =
+            reconnectCamera.isPending &&
+            reconnectCamera.variables?.cameraId === cameraId;
+          const deletePending =
+            deleteCamera.isPending &&
+            deleteCamera.variables?.cameraId === cameraId;
+
+          return (
+            <RoleGate
+              anyOf={["site-admin", "platform-admin"]}
+              fallback={<span className="text-[11px] text-stone-600">Admin only</span>}
+            >
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={reconnectPending || deletePending}
+                  onClick={() =>
+                    reconnectCamera.mutate({
+                      cameraId,
+                      name: row.original.name,
+                    })
+                  }
+                >
+                  {reconnectPending ? "Reconnecting..." : "Reconnect"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="text-red-300 hover:bg-red-950/50 hover:text-red-200"
+                  disabled={reconnectPending || deletePending}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        `Remove camera ${row.original.name}? This stops live relay and removes it from the inventory.`,
+                      )
+                    ) {
+                      return;
+                    }
+
+                    deleteCamera.mutate({
+                      cameraId,
+                      name: row.original.name,
+                    });
+                  }}
+                >
+                  {deletePending ? "Removing..." : "Remove"}
+                </Button>
+              </div>
+            </RoleGate>
+          );
+        },
+      },
     ],
-    [],
+    [deleteCamera, reconnectCamera],
   );
 
   const table = useReactTable({
@@ -210,6 +326,18 @@ export function DevicesPage() {
           ) : null}
         </Card>
       </RoleGate>
+
+      {cameraActionError ? (
+        <Card className="border border-red-500/30 bg-red-950/20">
+          <p className="text-xs text-red-200">{cameraActionError}</p>
+        </Card>
+      ) : null}
+
+      {cameraActionMessage ? (
+        <Card className="border border-emerald-500/30 bg-emerald-950/20">
+          <p className="text-xs text-emerald-200">{cameraActionMessage}</p>
+        </Card>
+      ) : null}
 
       <Card className="flex flex-wrap items-end gap-3">
         <label className="flex min-w-52 flex-col gap-1 text-xs text-stone-400">

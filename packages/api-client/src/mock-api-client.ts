@@ -63,6 +63,7 @@ export class MockVmsApiClient implements VmsApiClient {
     });
     mockData.devices.unshift({
       id: `dev-${camera.id}`,
+      cameraId: camera.id,
       siteId,
       name: input.name,
       type: "camera",
@@ -76,6 +77,36 @@ export class MockVmsApiClient implements VmsApiClient {
     });
 
     return camera;
+  }
+
+  async reconnectCamera(cameraId: string): Promise<Camera> {
+    await sleep(networkDelay());
+    const camera = mockData.cameras.find((item) => item.id === cameraId);
+    if (!camera) {
+      throw new Error(`Camera ${cameraId} was not found.`);
+    }
+
+    camera.health = "warning";
+    camera.lastSeenAt = new Date().toISOString();
+
+    const device = mockData.devices.find((item) => item.cameraId === cameraId);
+    if (device) {
+      device.health = "warning";
+      device.lastHeartbeatAt = camera.lastSeenAt;
+    }
+
+    return camera;
+  }
+
+  async deleteCamera(cameraId: string): Promise<void> {
+    await sleep(networkDelay());
+    mockData.cameras = mockData.cameras.filter((camera) => camera.id !== cameraId);
+    mockData.liveTiles = mockData.liveTiles.filter((tile) => tile.cameraId !== cameraId);
+    mockData.devices = mockData.devices.filter((device) => device.cameraId !== cameraId);
+    mockData.alerts = mockData.alerts.filter((alert) => alert.cameraId !== cameraId);
+    mockData.incidents = mockData.incidents.filter(
+      (incident) => !incident.cameraIds.includes(cameraId),
+    );
   }
 
   async listLiveTiles(siteId?: string) {

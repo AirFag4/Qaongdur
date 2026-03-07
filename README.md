@@ -31,6 +31,7 @@ Current behavior in this mode:
 - Keycloak, control-api, Postgres, Redis, object storage, MediaMTX, and the built web app all run in containers
 - auth is real
 - camera inventory, device inventory, live tiles, overview metrics, RTSP onboarding, and playback search use the real `control-api`
+- site-admin and platform-admin users can reconnect or remove cameras from the Devices page
 - MediaMTX records rolling segments and serves playback URLs for finalized recordings
 - alerts and incidents are still placeholder backend responses rather than a full detection-to-incident pipeline
 
@@ -177,6 +178,13 @@ What `03 + core 05` means in practice:
 - keep `services/agent` deferred until the authenticated backend surface is stable
 - leave advanced GPU and local NVR profiles for a later milestone
 
+### Current Backend Todo
+
+- migrate camera persistence from `/data/cameras.json` to Postgres with real schema migrations
+- move playback segment indexing and retention metadata into Postgres instead of relying only on MediaMTX playback listing
+- model cameras, devices, sites, and recording metadata as relational entities so inventory, health, and playback can evolve without file-based coordination
+- keep MediaMTX as the relay and playback edge, but remove JSON-file state from `control-api` once database-backed persistence is ready
+
 ### Planned NVR Direction
 
 - support both external NVR or VMS integrations and camera-direct deployments with no existing NVR
@@ -222,6 +230,30 @@ docker compose --env-file .env -f infra/docker/compose.core.yml down
 docker volume rm docker_keycloak-postgres-data
 make docker-up
 ```
+
+## RTSP Troubleshooting
+
+If a camera plays for a while and then freezes, check the relay state before assuming the web player is the problem:
+
+```bash
+curl -sS -u qaongdur-api:qaongdur-api http://localhost:9997/v3/paths/list
+docker compose --env-file .env -f infra/docker/compose.core.yml --profile core logs -f mediamtx
+```
+
+Healthy stream indicators:
+
+- `ready=true`
+- `tracks` is non-empty
+- `bytesReceived` keeps increasing
+
+If the path stays `ready=false`, `tracks=[]`, or MediaMTX logs repeated `request timed out`, the RTSP source is failing upstream of the browser.
+
+Current limitation:
+
+- `control-api` currently programs MediaMTX with RTSP transport forced to `tcp`
+- some cameras behave better with `udp` or vendor-specific RTSP paths, so VLC can appear stable while the relay later stalls
+
+If your local `.env` predates the latest Compose changes, refresh it from `.env.example` so keys such as `MEDIAMTX_PLAYBACK_PORT` and the neutral `OBJECT_STORAGE_*` settings are present.
 
 ## Planning Docs
 

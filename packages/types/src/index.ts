@@ -156,6 +156,7 @@ export interface PlaybackSegment {
 
 export interface Device {
   id: string;
+  cameraId?: string;
   siteId: string;
   name: string;
   type: DeviceType;
@@ -220,6 +221,8 @@ export interface VmsApiClient {
   listSites(): Promise<Site[]>;
   listCameras(siteId?: string): Promise<Camera[]>;
   createCamera(input: CreateCameraInput): Promise<Camera>;
+  reconnectCamera(cameraId: string): Promise<Camera>;
+  deleteCamera(cameraId: string): Promise<void>;
   listLiveTiles(siteId?: string): Promise<LiveStreamTile[]>;
   getOverview(siteId?: string): Promise<OverviewSnapshot>;
   listAlerts(filter?: AlertFilter): Promise<AlertEvent[]>;

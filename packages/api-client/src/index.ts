@@ -38,6 +38,8 @@ export const createApiClient = (config?: HttpApiClientConfig): VmsApiClient => {
         () => mockApiClient.listCameras(siteId),
       )(),
     createCamera: (input) => httpClient.createCamera(input),
+    reconnectCamera: (cameraId) => httpClient.reconnectCamera(cameraId),
+    deleteCamera: (cameraId) => httpClient.deleteCamera(cameraId),
     listLiveTiles: (siteId) =>
       withFallback(
         () => httpClient.listLiveTiles(siteId),

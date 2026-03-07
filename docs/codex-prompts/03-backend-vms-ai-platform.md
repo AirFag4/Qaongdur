@@ -174,3 +174,15 @@ For camera-direct local NVR mode:
 - a site with cameras but no existing NVR can still be onboarded and recorded locally
 - the same playback APIs work for externally managed recordings and Qaongdur-managed local recordings
 - the architecture is realistic for an open-source Docker deployment on a single machine
+
+## Follow-Up Todo
+
+After the first RTSP onboarding and MediaMTX slice is in place, the next backend-hardening work should explicitly include:
+
+- migrate camera persistence from the local JSON store in `control-api` to Postgres
+- add real schema migrations for cameras, devices, sites, and recording metadata
+- persist playback indexes and retention metadata in Postgres instead of depending only on MediaMTX listing responses
+- remove file-based coordination from `control-api` once database-backed inventory and playback metadata are stable
+- make RTSP transport selectable per camera instead of hard-coding relay sessions to `tcp`
+- expose stream probe and failure diagnostics so the UI can show why a camera is not ready
+- add stall detection and controlled auto-reconnect for streams that freeze after initial success

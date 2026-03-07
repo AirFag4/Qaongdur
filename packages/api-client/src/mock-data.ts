@@ -266,6 +266,7 @@ const deviceCatalog: Device[] = [
   ...cameraCatalog.map(
     (camera): Device => ({
       id: `dev-${camera.id}`,
+      cameraId: camera.id,
       siteId: camera.siteId,
       name: camera.name,
       type: "camera",

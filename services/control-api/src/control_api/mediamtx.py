@@ -68,6 +68,29 @@ class MediaMtxClient:
         detail = response.text.strip() or "MediaMTX rejected the path configuration."
         raise MediaMtxError(detail)
 
+    async def delete_camera_path(
+        self,
+        *,
+        path_name: str,
+        ignore_missing: bool = False,
+    ) -> None:
+        async with httpx.AsyncClient(auth=self._api_auth, timeout=5.0) as client:
+            response = await client.delete(
+                f"{self._api_url}/v3/config/paths/delete/{path_name}",
+            )
+
+        if response.is_success:
+            return
+        if ignore_missing and response.status_code == status.HTTP_404_NOT_FOUND:
+            return
+
+        detail = response.text.strip() or "MediaMTX rejected the path deletion request."
+        raise MediaMtxError(detail)
+
+    async def reconnect_camera_path(self, *, path_name: str, source: str) -> None:
+        await self.delete_camera_path(path_name=path_name, ignore_missing=True)
+        await self.add_camera_path(path_name=path_name, source=source)
+
     async def list_paths(self) -> dict[str, PathState]:
         async with httpx.AsyncClient(auth=self._api_auth, timeout=5.0) as client:
             response = await client.get(f"{self._api_url}/v3/paths/list")
