@@ -12,6 +12,6 @@
     "docker-up": "sh -c 'ENV_FILE=.env; if [ ! -f \"$ENV_FILE\" ]; then ENV_FILE=.env.example; fi; docker compose --env-file \"$ENV_FILE\" -f infra/docker/compose.core.yml --profile core up -d --build'",
     "docker-down": "sh -c 'ENV_FILE=.env; if [ ! -f \"$ENV_FILE\" ]; then ENV_FILE=.env.example; fi; docker compose --env-file \"$ENV_FILE\" -f infra/docker/compose.core.yml --profile core --profile vision-cpu --profile vision-gpu --profile nvr-local down --remove-orphans'",
     "logs": "sh -c 'ENV_FILE=.env; if [ ! -f \"$ENV_FILE\" ]; then ENV_FILE=.env.example; fi; docker compose --env-file \"$ENV_FILE\" -f infra/docker/compose.core.yml --profile core logs -f --tail=200'",
-    "seed": "sh -c 'ENV_FILE=.env; if [ ! -f \"$ENV_FILE\" ]; then ENV_FILE=.env.example; fi; docker compose --env-file \"$ENV_FILE\" -f infra/docker/compose.core.yml --profile core run --rm minio-bootstrap'"
+    "seed": "sh -c 'ENV_FILE=.env; if [ ! -f \"$ENV_FILE\" ]; then ENV_FILE=.env.example; fi; docker compose --env-file \"$ENV_FILE\" -f infra/docker/compose.core.yml --profile core run --rm object-storage-bootstrap'"
   }
 }

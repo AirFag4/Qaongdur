@@ -43,6 +43,6 @@ Plan for two ingest and recording modes from the start:
 ## Storage Direction
 
 - Keep recording storage behind an S3-compatible adapter rather than hard-coding one product.
-- MinIO remains the default self-hosted option for local development and first public releases.
+- The default self-hosted object-storage implementation remains MinIO for local development and first public releases.
 - RustFS can be used as the object-storage backend for a local Qaongdur NVR deployment because the storage role is S3-compatible blobs for segments, clips, thumbnails, and exports.
 - Do not treat RustFS as the NVR itself. Qaongdur still needs recording, retention, playback indexing, and clip-export logic above the object store.

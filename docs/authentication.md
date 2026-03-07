@@ -40,6 +40,13 @@ This auth stack is also the first slice of the future `core` container runtime. 
 1. Copy `.env.example` to `.env`.
 2. Run `make docker-up` from the repo root.
 
+Current browser flow:
+
+1. Open `http://localhost:5173`.
+2. The app checks for an existing Keycloak browser session.
+3. If you are not signed in yet, the app shows its auth screen.
+4. Click `Continue To Keycloak` to start login.
+
 Auth-only bootstrap remains available with `make docker-auth-up`.
 
 Host-based inner loop is still available:
@@ -63,6 +70,42 @@ All seeded users use the password `ChangeMe123!` for local development:
 - `olivia.operator`
 - `riley.reviewer`
 - `victor.viewer`
+
+## Add Or Manage Users
+
+The VMS app does not keep a separate local user table yet. A user who exists in the
+Keycloak realm `qaongdur-dev` can log into the app.
+
+Admin console path:
+
+1. Open `http://localhost:8080/admin/`.
+2. Sign in with the bootstrap admin account from the repo root `.env`.
+3. Select the `qaongdur-dev` realm.
+
+To add a user:
+
+1. Open `Users`.
+2. Click `Add user`.
+3. Fill username, email, first name, and last name.
+4. Enable the user and save.
+5. Open `Credentials` and set a password.
+6. Open `Role mapping` and assign realm roles such as `viewer`, `operator`, `reviewer`, `site-admin`, or `platform-admin`.
+
+Notes:
+
+- `viewer` is the minimum useful role for basic read access.
+- editing `infra/keycloak/import/qaongdur-dev-realm.json` does not update an already-running realm unless you recreate the Keycloak data store and re-import from scratch
+- for a running local system, use the admin console to add users rather than editing the realm JSON
+
+## Login Methods
+
+Current local login methods for `qaongdur-web`:
+
+- username + password
+- email + password
+- passkey after WebAuthn passwordless is enabled in Keycloak and the user registers one
+
+Self-registration is currently disabled in the imported realm.
 
 ## Role Model
 

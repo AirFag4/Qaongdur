@@ -13,7 +13,7 @@ Execute this prompt in two stages instead of treating it as one final packaging 
 Stage 1: `core` runtime, done together with `docs/codex-prompts/03-backend-vms-ai-platform.md`
 
 - make Docker Compose the default runtime for shared services immediately
-- boot `web`, `control-api`, `keycloak`, `postgres`, `redis`, `minio`, and `mediamtx`
+- boot `web`, `control-api`, `keycloak`, `postgres`, `redis`, `object-storage`, and `mediamtx`
 - include seed or mock data so the platform is demoable early
 - keep `agent`, `vision-cpu`, `vision-gpu`, and `nvr-local` out of the critical path if they are not ready yet
 
@@ -47,7 +47,7 @@ Include or prepare for:
 - `agent`
 - `postgres`
 - `redis`
-- `minio` by default, with `rustfs` as a documented S3-compatible alternative
+- `object-storage` in the runtime config, with MinIO as the default image and RustFS as a documented S3-compatible alternative
 - `keycloak`
 - `mediamtx`
 

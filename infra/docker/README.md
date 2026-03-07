@@ -25,6 +25,11 @@ make seed
 make vision-up
 ```
 
+Notes:
+
+- `object-storage-bootstrap` is a one-shot seed job; `Exited (0)` is the expected success state after it creates the bucket
+- if you copied `.env` before the object-storage rename, refresh it from `.env.example` or update the storage keys manually
+
 ## Current Core Services
 
 - `web`
@@ -33,8 +38,8 @@ make vision-up
 - `keycloak-postgres`
 - `postgres`
 - `redis`
-- `minio`
-- `minio-bootstrap`
+- `object-storage`
+- `object-storage-bootstrap`
 - `mediamtx`
 
 The `vision` service is scaffolded and available under the `vision-cpu` profile via `make vision-up`.

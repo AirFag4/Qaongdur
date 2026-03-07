@@ -34,7 +34,7 @@ logs:
 	$(CORE_COMPOSE) logs -f --tail=200
 
 seed:
-	$(CORE_COMPOSE) run --rm minio-bootstrap
+	$(CORE_COMPOSE) run --rm object-storage-bootstrap
 
 vision-up:
 	$(VISION_COMPOSE) up -d --build

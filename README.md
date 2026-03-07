@@ -28,9 +28,15 @@ make logs
 
 Current behavior in this mode:
 
-- Keycloak, control-api, Postgres, Redis, MinIO, MediaMTX, and the built web app all run in containers
+- Keycloak, control-api, Postgres, Redis, object storage, MediaMTX, and the built web app all run in containers
 - auth is real
 - most domain data in the web UI is still mock-backed until the next backend slice lands
+
+Login path in this mode:
+
+- open `http://localhost:5173`
+- click `Continue To Keycloak`
+- sign in with a seeded user such as `pat.admin` / `ChangeMe123!`
 
 Hybrid host mode with real auth and real auth API, but mock business data in the UI:
 
@@ -164,7 +170,7 @@ What `03 + core 05` means in practice:
 
 - replace mock client internals with real backend endpoints while preserving the `VmsApiClient` interface
 - containerize `web` and `control-api`
-- add shared Compose networking for `keycloak`, `postgres`, `redis`, `minio`, and `mediamtx`
+- add shared Compose networking for `keycloak`, `postgres`, `redis`, `object-storage`, and `mediamtx`
 - ship the first runnable `vision` scaffold even if the full detection-to-alert path is still incomplete
 - keep `services/agent` deferred until the authenticated backend surface is stable
 - leave advanced GPU and local NVR profiles for a later milestone
@@ -174,7 +180,7 @@ What `03 + core 05` means in practice:
 - support both external NVR or VMS integrations and camera-direct deployments with no existing NVR
 - keep playback and alert APIs consistent whether recordings live in an upstream NVR or in Qaongdur-managed local storage
 - use MediaMTX plus Qaongdur recording and indexing logic for the local NVR path
-- keep object storage behind an S3-compatible adapter: MinIO is the default plan, and RustFS is a viable alternative storage backend rather than the NVR itself
+- keep object storage behind an S3-compatible adapter: MinIO is the default implementation today, and RustFS is a viable alternative storage backend rather than the NVR itself
 
 ## For AI Coder Tools
 

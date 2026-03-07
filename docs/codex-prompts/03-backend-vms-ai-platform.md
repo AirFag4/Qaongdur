@@ -162,7 +162,7 @@ For camera-direct local NVR mode:
 - initial database schema or migrations
 - sample frame or clip ingestion path
 - one end-to-end detection-to-alert flow
-- recording-storage adapter configuration that is MinIO-first but RustFS-compatible
+- recording-storage adapter configuration that uses vendor-neutral object-storage settings while defaulting to MinIO and remaining RustFS-compatible
 - API contracts that the React frontend can consume
 
 ## Acceptance Criteria

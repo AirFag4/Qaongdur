@@ -77,33 +77,33 @@ services:
       timeout: 5s
       retries: 10
 
-  minio:
+  object-storage:
     profiles: ["core"]
-    image: ${MINIO_IMAGE}
-    container_name: qaongdur-minio
+    image: ${OBJECT_STORAGE_IMAGE}
+    container_name: qaongdur-object-storage
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${OBJECT_STORAGE_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_ROOT_PASSWORD}
     volumes:
-      - minio-data:/data
+      - object-storage-data:/data
     ports:
-      - "${MINIO_PORT}:9000"
-      - "${MINIO_CONSOLE_PORT}:9001"
+      - "${OBJECT_STORAGE_PORT}:9000"
+      - "${OBJECT_STORAGE_CONSOLE_PORT}:9001"
 
-  minio-bootstrap:
+  object-storage-bootstrap:
     profiles: ["core"]
-    image: ${MINIO_MC_IMAGE}
+    image: ${OBJECT_STORAGE_CLIENT_IMAGE}
     depends_on:
-      minio:
+      object-storage:
         condition: service_started
     entrypoint: /bin/sh
     command:
       - -c
       - |
-        until mc alias set qaongdur http://minio:9000 "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"; do sleep 1; done
-        mc mb --ignore-existing qaongdur/${MINIO_BUCKET}
-        mc anonymous set private qaongdur/${MINIO_BUCKET}
+        until mc alias set qaongdur http://object-storage:9000 "${OBJECT_STORAGE_ROOT_USER}" "${OBJECT_STORAGE_ROOT_PASSWORD}"; do sleep 1; done
+        mc mb --ignore-existing qaongdur/${OBJECT_STORAGE_BUCKET}
+        mc anonymous set private qaongdur/${OBJECT_STORAGE_BUCKET}
     restart: "no"
 
   mediamtx:
@@ -144,7 +144,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
+      object-storage:
         condition: service_started
       mediamtx:
         condition: service_started
@@ -177,7 +177,7 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_started
-      minio-bootstrap:
+      object-storage-bootstrap:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:5173 >/dev/null 2>&1"]
@@ -196,7 +196,7 @@ services:
       QAONGDUR_VISION_SERVICE_HOST: 0.0.0.0
       QAONGDUR_VISION_SERVICE_PORT: 8010
       QAONGDUR_VISION_SAMPLE_MODE: "true"
-      QAONGDUR_VISION_STORAGE_BUCKET: ${MINIO_BUCKET}
+      QAONGDUR_VISION_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET}
     ports:
       - "${VISION_PORT}:8010"
     depends_on:
@@ -204,7 +204,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
+      object-storage:
         condition: service_started
       mediamtx:
         condition: service_started
@@ -221,4 +221,4 @@ services:
 volumes:
   keycloak-postgres-data:
   postgres-data:
-  minio-data:
+  object-storage-data:

@@ -42,7 +42,6 @@ export const initKeycloak = () => {
     onLoad: "check-sso",
     pkceMethod: "S256",
     checkLoginIframe: false,
-    scope: "openid profile email roles",
     enableLogging: import.meta.env.DEV,
   });
 
