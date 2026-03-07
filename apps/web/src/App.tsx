@@ -1,4 +1,7 @@
+import { AuthScreen } from "./auth/auth-screen";
+import { useAuth } from "./auth/use-auth";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { LoadingState } from "@qaongdur/ui";
 import { OperatorLayout } from "./app/operator-layout";
 import { AlertsEventsPage } from "./pages/alerts-events-page";
 import { DevicesPage } from "./pages/devices-page";
@@ -8,6 +11,20 @@ import { OverviewPage } from "./pages/overview-page";
 import { PlaybackSearchPage } from "./pages/playback-search-page";
 
 function App() {
+  const auth = useAuth();
+
+  if (auth.status === "loading") {
+    return <LoadingState label="Connecting to Keycloak..." />;
+  }
+
+  if (auth.status === "error") {
+    return <AuthScreen error={auth.error} />;
+  }
+
+  if (auth.status === "unauthenticated") {
+    return <AuthScreen onLogin={() => auth.login()} />;
+  }
+
   return (
     <Routes>
       <Route element={<OperatorLayout />}>

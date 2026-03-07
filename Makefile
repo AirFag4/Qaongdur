@@ -18,4 +18,6 @@ build:
 	pnpm -r --if-present build
 
 docker-up:
-	@echo "Docker compose setup is planned for infra/docker in a later phase."
+	@ENV_FILE=infra/docker/.env; \
+	if [ ! -f "$$ENV_FILE" ]; then ENV_FILE=infra/docker/.env.example; fi; \
+	docker compose --env-file "$$ENV_FILE" -f infra/docker/compose.auth.yml up -d

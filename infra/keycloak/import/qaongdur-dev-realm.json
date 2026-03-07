@@ -1,0 +1,227 @@
+{
+  "realm": "qaongdur-dev",
+  "enabled": true,
+  "displayName": "Qaongdur Dev",
+  "displayNameHtml": "<strong>Qaongdur Dev</strong>",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "bruteForceProtected": true,
+  "failureFactor": 10,
+  "roles": {
+    "realm": [
+      {
+        "name": "platform-admin",
+        "description": "Global platform administration and destructive operations"
+      },
+      {
+        "name": "site-admin",
+        "description": "Site-specific administration and approvals"
+      },
+      {
+        "name": "operator",
+        "description": "Day-to-day monitoring and response"
+      },
+      {
+        "name": "reviewer",
+        "description": "Incident review and evidence approval"
+      },
+      {
+        "name": "viewer",
+        "description": "Read-only access to monitoring surfaces"
+      }
+    ]
+  },
+  "clientScopes": [
+    {
+      "name": "qaongdur-api-audience",
+      "description": "Injects qaongdur-control-api into access token audience",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "qaongdur-control-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "qaongdur-control-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "qaongdur-web",
+      "name": "Qaongdur Web",
+      "description": "Browser SPA using Authorization Code + PKCE",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "rootUrl": "http://localhost:5173",
+      "baseUrl": "http://localhost:5173",
+      "redirectUris": [
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email",
+        "qaongdur-api-audience"
+      ],
+      "optionalClientScopes": [
+        "offline_access",
+        "microprofile-jwt"
+      ]
+    },
+    {
+      "clientId": "qaongdur-control-api",
+      "name": "Qaongdur Control API",
+      "description": "Resource server audience for backend token validation",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "bearerOnly": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "pat.admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Pat",
+      "lastName": "Admin",
+      "email": "pat.admin@qaongdur.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChangeMe123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "platform-admin",
+        "site-admin",
+        "operator",
+        "reviewer",
+        "viewer"
+      ]
+    },
+    {
+      "username": "sam.site",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Sam",
+      "lastName": "Site",
+      "email": "sam.site@qaongdur.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChangeMe123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "site-admin",
+        "reviewer",
+        "viewer"
+      ]
+    },
+    {
+      "username": "olivia.operator",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Olivia",
+      "lastName": "Operator",
+      "email": "olivia.operator@qaongdur.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChangeMe123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "operator",
+        "viewer"
+      ]
+    },
+    {
+      "username": "riley.reviewer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Riley",
+      "lastName": "Reviewer",
+      "email": "riley.reviewer@qaongdur.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChangeMe123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "reviewer",
+        "viewer"
+      ]
+    },
+    {
+      "username": "victor.viewer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Victor",
+      "lastName": "Viewer",
+      "email": "victor.viewer@qaongdur.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChangeMe123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "viewer"
+      ]
+    }
+  ],
+  "webAuthnPolicyRpEntityName": "Qaongdur Ops",
+  "webAuthnPolicyRpId": "localhost",
+  "webAuthnPolicySignatureAlgorithms": [
+    "ES256",
+    "RS256"
+  ],
+  "webAuthnPolicyUserVerificationRequirement": "preferred",
+  "webAuthnPolicyPasswordlessRpEntityName": "Qaongdur Ops",
+  "webAuthnPolicyPasswordlessRpId": "localhost",
+  "webAuthnPolicyPasswordlessSignatureAlgorithms": [
+    "ES256",
+    "RS256"
+  ],
+  "webAuthnPolicyPasswordlessRequireResidentKey": "Yes",
+  "webAuthnPolicyPasswordlessUserVerificationRequirement": "required"
+}

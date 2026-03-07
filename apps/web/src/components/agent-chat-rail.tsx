@@ -1,16 +1,87 @@
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Badge } from "@qaongdur/ui";
 import type { RealtimeEvent } from "@qaongdur/types";
 import { Card, CardDescription, CardTitle } from "@qaongdur/ui";
 import { Button } from "@qaongdur/ui";
+import { RoleGate } from "../auth/role-gate";
+import { useAuth } from "../auth/use-auth";
+import {
+  fetchControlApiAuthStatus,
+  requestDestructivePurge,
+  requestEvidenceExport,
+} from "../lib/control-api";
 
 export function AgentChatRail({ recentEvents }: { recentEvents: RealtimeEvent[] }) {
+  const auth = useAuth();
+  const accessToken = auth.session?.accessToken;
+
+  const controlApiStatus = useQuery({
+    queryKey: ["control-api-auth", auth.session?.user.id],
+    queryFn: () => fetchControlApiAuthStatus(accessToken!),
+    enabled: Boolean(accessToken),
+    retry: 1,
+    staleTime: 60_000,
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: () => requestEvidenceExport(accessToken!),
+  });
+
+  const purgeMutation = useMutation({
+    mutationFn: () => requestDestructivePurge(accessToken!),
+  });
+
   return (
     <div className="flex h-full flex-col gap-3">
+      <Card className="space-y-3">
+        <div className="flex items-center justify-between">
+          <CardTitle>Authenticated Session</CardTitle>
+          <Badge tone="cyan">In App</Badge>
+        </div>
+        <div className="space-y-1 text-xs text-stone-300">
+          <p className="font-medium text-stone-100">{auth.session?.user.displayName}</p>
+          <p>{auth.session?.user.email ?? auth.session?.user.username}</p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {(auth.session?.user.roles ?? []).map((role) => (
+              <Badge key={role} tone="stone">
+                {role}
+              </Badge>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="secondary" onClick={() => void auth.registerPasskey()}>
+            Register Passkey
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void auth.requestStepUp("sensitive-agent-action")}
+          >
+            Step-Up Reauth
+          </Button>
+        </div>
+        <div className="rounded-md border border-stone-700 bg-stone-950/60 p-2 text-xs text-stone-400">
+          {controlApiStatus.isSuccess ? (
+            <p>
+              Control API validated this browser token for audience{" "}
+              <span className="font-mono text-stone-300">
+                {controlApiStatus.data.audience}
+              </span>
+              .
+            </p>
+          ) : controlApiStatus.isError ? (
+            <p>Control API check unavailable. Start `services/control-api` to verify JWTs end to end.</p>
+          ) : (
+            <p>Checking backend token validation...</p>
+          )}
+        </div>
+      </Card>
+
       <Card className="space-y-2">
         <div className="flex items-center justify-between">
           <CardTitle>Agent Assistant</CardTitle>
-          <span className="rounded-full border border-cyan-800 bg-cyan-950/60 px-2 py-1 text-[10px] uppercase tracking-wide text-cyan-200">
-            Reserved
-          </span>
+          <Badge tone="cyan">Reserved</Badge>
         </div>
         <CardDescription>
           This panel is reserved for in-app incident chat and tool approvals.
@@ -27,6 +98,66 @@ export function AgentChatRail({ recentEvents }: { recentEvents: RealtimeEvent[] 
         <Button variant="secondary" size="sm" className="w-full">
           Open Agent (coming soon)
         </Button>
+        <RoleGate
+          anyOf={["operator", "reviewer", "site-admin", "platform-admin"]}
+          fallback={
+            <p className="rounded border border-stone-800 bg-stone-950/60 p-2 text-xs text-stone-500">
+              Operator, reviewer, or admin roles are required to approve evidence exports.
+            </p>
+          }
+        >
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-full"
+            onClick={() => exportMutation.mutate()}
+            disabled={exportMutation.isPending}
+          >
+            {exportMutation.isPending ? "Submitting Export Approval..." : "Run Approval Demo"}
+          </Button>
+        </RoleGate>
+        {exportMutation.error ? (
+          <p className="text-xs text-red-300">
+            {exportMutation.error instanceof Error
+              ? exportMutation.error.message
+              : "Approval request failed."}
+          </p>
+        ) : null}
+        {exportMutation.data ? (
+          <p className="text-xs text-emerald-300">
+            Approval recorded via backend for {exportMutation.data.action}.
+          </p>
+        ) : null}
+        <RoleGate
+          anyOf={["platform-admin"]}
+          fallback={
+            <p className="rounded border border-stone-800 bg-stone-950/60 p-2 text-xs text-stone-500">
+              Destructive actions are platform-admin only and require step-up authentication.
+            </p>
+          }
+        >
+          <Button
+            size="sm"
+            variant="attention"
+            className="w-full"
+            onClick={() => purgeMutation.mutate()}
+            disabled={purgeMutation.isPending}
+          >
+            {purgeMutation.isPending ? "Checking Step-Up..." : "Run Destructive Demo"}
+          </Button>
+        </RoleGate>
+        {purgeMutation.error ? (
+          <p className="text-xs text-amber-300">
+            {purgeMutation.error instanceof Error
+              ? purgeMutation.error.message
+              : "Destructive action failed."}
+          </p>
+        ) : null}
+        {purgeMutation.data ? (
+          <p className="text-xs text-emerald-300">
+            Step-up action accepted by backend for {purgeMutation.data.action}.
+          </p>
+        ) : null}
       </Card>
 
       <Card className="flex-1 space-y-2 overflow-hidden">

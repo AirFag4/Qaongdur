@@ -7,6 +7,50 @@ export type IncidentStatus =
   | "resolved";
 export type AlertStatus = "new" | "acknowledged" | "investigating" | "resolved";
 export type DeviceType = "camera" | "nvr" | "gateway" | "sensor";
+export type PlatformRole =
+  | "platform-admin"
+  | "site-admin"
+  | "operator"
+  | "reviewer"
+  | "viewer";
+
+export interface AuthenticatedUser {
+  id: string;
+  username: string;
+  displayName: string;
+  email?: string;
+  roles: PlatformRole[];
+  acr?: string;
+}
+
+export interface AuthSession {
+  accessToken: string;
+  idToken?: string;
+  expiresAt?: number;
+  user: AuthenticatedUser;
+}
+
+export interface BackendAuthStatus {
+  service: string;
+  issuer: string;
+  audience: string;
+  checkedAt: string;
+  user: AuthenticatedUser;
+}
+
+export interface ApprovalRequest {
+  action: string;
+  approvalPath: string[];
+  rationale?: string;
+  requiresStepUp: boolean;
+}
+
+export interface ApprovalResult extends ApprovalRequest {
+  approved: boolean;
+  approvedAt: string;
+  approvedBy: string;
+  stepUpSatisfied: boolean;
+}
 
 export interface Site {
   id: string;

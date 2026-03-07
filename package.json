@@ -9,6 +9,6 @@
     "build": "pnpm -r --if-present build",
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test",
-    "docker-up": "echo \"Compose files will be added under infra/docker in a later milestone.\""
+    "docker-up": "sh -c 'ENV_FILE=infra/docker/.env; if [ ! -f \"$ENV_FILE\" ]; then ENV_FILE=infra/docker/.env.example; fi; docker compose --env-file \"$ENV_FILE\" -f infra/docker/compose.auth.yml up -d'"
   }
 }

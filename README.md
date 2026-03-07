@@ -1,12 +1,25 @@
 # Qaongdur Monorepo
 
 Docker-first VMS + Vision AI + Agent AI project.  
-This commit establishes the initial monorepo structure and completes the first full frontend web console implementation with typed mock APIs.
+The repo now includes the initial monorepo structure, the first frontend web console, and Keycloak-based auth foundations for browser sessions, passkeys, and backend token validation.
 
 ## Quick Start
 
+Fastest UI-only loop:
+
 ```bash
 pnpm install
+pnpm --filter @qaongdur/web dev
+```
+
+Auth-enabled local stack:
+
+```bash
+cp infra/docker/.env.example infra/docker/.env
+make docker-up
+cp apps/web/.env.example apps/web/.env
+cp services/control-api/.env.example services/control-api/.env
+cd services/control-api && uv run qaongdur-control-api
 pnpm --filter @qaongdur/web dev
 ```
 
@@ -85,6 +98,16 @@ Implemented reusable UI primitives and domain components:
 - incident/evidence: `IncidentSummaryCard`, `EvidenceClipPanel`
 - support: `FilterBar`, `HealthStatusBadge`, `EmptyState`, `LoadingState`, `CommandPalette`
 
+### 6. Auth Foundation
+
+Added the first production-oriented auth slice:
+
+- Keycloak realm bootstrap under `infra/keycloak/import`
+- local auth compose stack under `infra/docker/compose.auth.yml`
+- browser auth integration in `apps/web/src/auth`
+- backend JWT validation and role guards in `services/control-api`
+- passkey registration and step-up hooks documented in `docs/authentication.md`
+
 ## For Developers
 
 ### Current Frontend Boundaries
@@ -94,12 +117,30 @@ Implemented reusable UI primitives and domain components:
 - all shared domain contracts go in `packages/types`
 - all backend integration logic should go through `packages/api-client`
 
-### Expected Next Steps
+### Current Delivery Order
+
+The roadmap is now container-first for the shared runtime, but host-based inner loops are still acceptable for fast editing.
+
+Recommended next milestone order:
+
+1. `03` backend implementation together with the `core` slice of `05`
+2. `04` in-app agent after the shared auth/API/container network is stable
+3. advanced `05` profiles for `vision-cpu`, `vision-gpu`, and `nvr-local`
+
+What `03 + core 05` means in practice:
 
 - replace mock client internals with real backend endpoints while preserving the `VmsApiClient` interface
-- connect auth/session flow (Keycloak docs already in `docs/codex-prompts/02-auth-keycloak-passkeys.md`)
-- add pagination/server-side filtering strategies on alerts/devices once API is available
-- move websocket mock to real event stream transport
+- containerize `web` and `control-api`
+- add shared Compose networking for `keycloak`, `postgres`, `redis`, `minio`, and `mediamtx`
+- keep `services/agent` deferred until the authenticated backend surface is stable
+- leave advanced GPU and local NVR profiles for a later milestone
+
+### Planned NVR Direction
+
+- support both external NVR or VMS integrations and camera-direct deployments with no existing NVR
+- keep playback and alert APIs consistent whether recordings live in an upstream NVR or in Qaongdur-managed local storage
+- use MediaMTX plus Qaongdur recording and indexing logic for the local NVR path
+- keep object storage behind an S3-compatible adapter: MinIO is the default plan, and RustFS is a viable alternative storage backend rather than the NVR itself
 
 ## For AI Coder Tools
 
@@ -136,3 +177,9 @@ Implementation briefs remain under:
 4. [`docs/codex-prompts/03-backend-vms-ai-platform.md`](docs/codex-prompts/03-backend-vms-ai-platform.md)
 5. [`docs/codex-prompts/04-agent-chat-openclaw.md`](docs/codex-prompts/04-agent-chat-openclaw.md)
 6. [`docs/codex-prompts/05-docker-open-source-platform.md`](docs/codex-prompts/05-docker-open-source-platform.md)
+
+Recommended execution order now:
+
+1. [`docs/codex-prompts/03-backend-vms-ai-platform.md`](docs/codex-prompts/03-backend-vms-ai-platform.md) plus the `core` subset of [`docs/codex-prompts/05-docker-open-source-platform.md`](docs/codex-prompts/05-docker-open-source-platform.md)
+2. [`docs/codex-prompts/04-agent-chat-openclaw.md`](docs/codex-prompts/04-agent-chat-openclaw.md)
+3. advanced profiles and packaging follow-up from [`docs/codex-prompts/05-docker-open-source-platform.md`](docs/codex-prompts/05-docker-open-source-platform.md)

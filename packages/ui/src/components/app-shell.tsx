@@ -16,6 +16,7 @@ export interface AppShellProps {
   onOpenCommandPalette: () => void;
   siteSwitcher: ReactNode;
   rightRail: ReactNode;
+  headerActions?: ReactNode;
   children: ReactNode;
 }
 
@@ -26,6 +27,7 @@ export function AppShell({
   onOpenCommandPalette,
   siteSwitcher,
   rightRail,
+  headerActions,
   children,
 }: AppShellProps) {
   return (
@@ -70,22 +72,25 @@ export function AppShell({
 
         <div className="flex min-h-[calc(100vh-1.5rem)] flex-col gap-3 overflow-hidden">
           <header className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-700/90 bg-stone-900/70 px-3 py-2">
-            <div className="flex items-center gap-1 overflow-x-auto">
-              {navItems.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onNavigate(item.path)}
-                  className={cn(
-                    "whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition-colors",
-                    activePath === item.path
-                      ? "bg-cyan-900/40 text-cyan-100"
-                      : "text-stone-400 hover:bg-stone-800/80",
-                  )}
-                >
-                  {item.label}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 overflow-x-auto">
+                {navItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => onNavigate(item.path)}
+                    className={cn(
+                      "whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition-colors",
+                      activePath === item.path
+                        ? "bg-cyan-900/40 text-cyan-100"
+                        : "text-stone-400 hover:bg-stone-800/80",
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              {headerActions}
             </div>
             <Button size="sm" variant="ghost" onClick={onOpenCommandPalette}>
               Command Palette

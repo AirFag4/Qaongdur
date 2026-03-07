@@ -6,6 +6,15 @@ You are Codex designing the first agent layer for the VMS product. The agent is 
 
 Create a safe, auditable in-app chat foundation that can later connect to OpenClaw without forcing the UI or auth system to be rebuilt.
 
+## Execution Order
+
+Run this prompt after:
+
+1. `docs/codex-prompts/03-backend-vms-ai-platform.md`
+2. the `core` runtime slice of `docs/codex-prompts/05-docker-open-source-platform.md`
+
+Assume that by the time this prompt starts, the shared container network, auth provider, API surface, storage dependencies, and approval hooks already exist.
+
 ## Important Product Constraints
 
 - the agent lives inside the web app
@@ -97,4 +106,3 @@ Add a persistent chat panel pattern to the React app with:
 - provider swaps do not require rewriting the UI
 - all tool usage is auditable
 - the auth model remains owned by the main app and Keycloak, not by the agent itself
-
