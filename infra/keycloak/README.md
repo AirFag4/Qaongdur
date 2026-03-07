@@ -19,10 +19,11 @@ The realm import sets WebAuthn relying-party defaults, but the full passwordless
 
 Recommended local sequence:
 
-1. Start Keycloak with `infra/docker/compose.auth.yml`.
-2. Open the admin console and inspect the imported `qaongdur-dev` realm.
-3. Enable WebAuthn passwordless in the browser authentication flow.
-4. Let users register passkeys through the Keycloak account or the in-app `webauthn-register-passwordless` action.
-5. If you want destructive actions to require step-up, map your chosen ACR value to the stronger login flow and keep it aligned with `VITE_KEYCLOAK_STEP_UP_ACR` and `QAONGDUR_KEYCLOAK_STEP_UP_ACR`.
+1. Copy `.env.example` to `.env` at the repo root.
+2. Start Keycloak with `make docker-auth-up` or boot the full stack with `make docker-up`.
+3. Open the admin console and inspect the imported `qaongdur-dev` realm.
+4. Enable WebAuthn passwordless in the browser authentication flow.
+5. Let users register passkeys through the Keycloak account or the in-app `webauthn-register-passwordless` action.
+6. If you want destructive actions to require step-up, map your chosen ACR value to the stronger login flow and keep it aligned with `VITE_KEYCLOAK_STEP_UP_ACR` and `QAONGDUR_KEYCLOAK_STEP_UP_ACR`.
 
 The web app intentionally delegates passkey UX to Keycloak instead of handling WebAuthn directly in app code.

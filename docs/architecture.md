@@ -9,7 +9,7 @@ This monorepo is organized around a single product surface (video operations con
 - `packages/api-client`: Typed adapters that hide data sources (mock now, backend later).
 - `packages/ui`: Shared UI primitives and domain components reused by pages.
 - `services/control-api`: FastAPI control plane scaffold with auth validation, approval examples, and room for the main VMS APIs.
-- `services/vision`: Planned ingest + model inference workflows.
+- `services/vision`: FastAPI vision scaffold with demo pipeline endpoints and room for full ingest + model inference workflows.
 - `services/agent`: Planned in-app agent orchestration and tool-calling.
 - `infra/docker`, `infra/keycloak`, `infra/mediamtx`: Infrastructure setup areas.
 

@@ -127,7 +127,7 @@ class KeycloakTokenVerifier:
             return self._oidc_metadata
 
         discovery_url = (
-            f"{self.settings.keycloak_issuer_url.rstrip('/')}"
+            f"{(self.settings.keycloak_discovery_url or self.settings.keycloak_issuer_url).rstrip('/')}"
             "/.well-known/openid-configuration"
         )
         async with httpx.AsyncClient(timeout=5.0) as client:

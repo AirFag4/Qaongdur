@@ -12,11 +12,31 @@ pnpm install
 pnpm --filter @qaongdur/web dev
 ```
 
-Auth-enabled local stack:
+Current behavior in this mode:
+
+- all operational pages use the in-process mock adapter from `packages/api-client`
+- no backend server is required
+- auth checks are skipped because Keycloak is not started
+
+Core container runtime:
 
 ```bash
-cp infra/docker/.env.example infra/docker/.env
+cp .env.example .env
 make docker-up
+make logs
+```
+
+Current behavior in this mode:
+
+- Keycloak, control-api, Postgres, Redis, MinIO, MediaMTX, and the built web app all run in containers
+- auth is real
+- most domain data in the web UI is still mock-backed until the next backend slice lands
+
+Hybrid host mode with real auth and real auth API, but mock business data in the UI:
+
+```bash
+cp .env.example .env
+make docker-auth-up
 cp apps/web/.env.example apps/web/.env
 cp services/control-api/.env.example services/control-api/.env
 cd services/control-api && uv run qaongdur-control-api
@@ -28,6 +48,7 @@ Validation:
 ```bash
 pnpm --filter @qaongdur/web lint
 pnpm --filter @qaongdur/web build
+python3 -m compileall services/control-api/src services/vision/src
 ```
 
 ## Detailed Change Log
@@ -108,6 +129,17 @@ Added the first production-oriented auth slice:
 - backend JWT validation and role guards in `services/control-api`
 - passkey registration and step-up hooks documented in `docs/authentication.md`
 
+### 7. Core Runtime Start
+
+Started the next backend and delivery milestone:
+
+- root `.env.example` for Compose-driven runtime config
+- `infra/docker/compose.core.yml` for the `core` stack
+- container builds for `apps/web` and `services/control-api`
+- initial `services/vision` FastAPI scaffold plus `vision-cpu` profile entry
+- MediaMTX config under `infra/mediamtx/mediamtx.yml`
+- `make docker-up`, `docker-down`, `logs`, `seed`, and `vision-up`
+
 ## For Developers
 
 ### Current Frontend Boundaries
@@ -116,6 +148,7 @@ Added the first production-oriented auth slice:
 - domain/UI reuse belongs in `packages/ui`
 - all shared domain contracts go in `packages/types`
 - all backend integration logic should go through `packages/api-client`
+- today, `packages/api-client/src/index.ts` still resolves the main VMS data calls to `mockApiClient`
 
 ### Current Delivery Order
 
@@ -132,6 +165,7 @@ What `03 + core 05` means in practice:
 - replace mock client internals with real backend endpoints while preserving the `VmsApiClient` interface
 - containerize `web` and `control-api`
 - add shared Compose networking for `keycloak`, `postgres`, `redis`, `minio`, and `mediamtx`
+- ship the first runnable `vision` scaffold even if the full detection-to-alert path is still incomplete
 - keep `services/agent` deferred until the authenticated backend surface is stable
 - leave advanced GPU and local NVR profiles for a later milestone
 
@@ -165,6 +199,8 @@ Run after edits:
 ```bash
 pnpm --filter @qaongdur/web lint
 pnpm --filter @qaongdur/web build
+python3 -m compileall services/control-api/src services/vision/src
+docker compose --env-file .env.example -f infra/docker/compose.core.yml --profile core config
 ```
 
 ## Planning Docs

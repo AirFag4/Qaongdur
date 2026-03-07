@@ -27,7 +27,7 @@ This document covers three layers:
 | Mock realtime transport | `packages/api-client/src/mock-event-socket.ts` | Mock websocket-like event feed | Implemented |
 | Frontend API bootstrap | `apps/web/src/lib/api.ts` | Instantiates the client/socket and defines React Query keys | Implemented |
 | Control plane backend | `services/control-api` | FastAPI scaffold with Keycloak token validation, auth endpoints, approval examples, and audit logging hooks | Partial |
-| Vision pipeline | `services/vision` | Detection, ingest, recording, clip generation, enrichment | Planned |
+| Vision pipeline | `services/vision` | Demo-ready vision scaffold with health endpoints and seeded pipeline responses | Partial |
 | Agent backend | `services/agent` | In-app assistant sessions, tool calls, approvals, audit trails | Planned |
 
 ## Current TypeScript API Surface
@@ -43,6 +43,13 @@ Current behavior:
 
 - `createApiClient()` always returns the singleton `mockApiClient`.
 - `createRealtimeSocket()` always returns a `MockRealtimeEventSocket`.
+- This means the main VMS pages still work with no HTTP backend server at all.
+
+Current run modes:
+
+- UI-only mock mode: start `pnpm --filter @qaongdur/web dev`
+- hybrid auth mode: start Keycloak and `services/control-api`, then run the web app locally
+- core container mode: run `make docker-up`, which starts real auth and infrastructure services while the web UI still uses mock business data for most route-level screens
 
 ### `VmsApiClient`
 

@@ -15,6 +15,7 @@ This auth stack is also the first slice of the future `core` container runtime. 
 ### Keycloak
 
 - Compose file: `infra/docker/compose.auth.yml`
+- Core runtime file: `infra/docker/compose.core.yml`
 - Realm import: `infra/keycloak/import/qaongdur-dev-realm.json`
 - Default realm: `qaongdur-dev`
 - Browser client: `qaongdur-web`
@@ -36,12 +37,22 @@ This auth stack is also the first slice of the future `core` container runtime. 
 
 ## Start The Stack
 
-1. Copy `infra/docker/.env.example` to `infra/docker/.env`.
-2. Run `docker compose --env-file infra/docker/.env -f infra/docker/compose.auth.yml up -d`.
-3. Copy `apps/web/.env.example` to `apps/web/.env`.
-4. Copy `services/control-api/.env.example` to `services/control-api/.env`.
-5. Start the API from `services/control-api` with `uv run qaongdur-control-api`.
-6. Start the web app from the repo root with `pnpm --filter @qaongdur/web dev`.
+1. Copy `.env.example` to `.env`.
+2. Run `make docker-up` from the repo root.
+
+Auth-only bootstrap remains available with `make docker-auth-up`.
+
+Host-based inner loop is still available:
+
+1. Copy `apps/web/.env.example` to `apps/web/.env`.
+2. Copy `services/control-api/.env.example` to `services/control-api/.env`.
+3. Start the API from `services/control-api` with `uv run qaongdur-control-api`.
+4. Start the web app from the repo root with `pnpm --filter @qaongdur/web dev`.
+
+Current limitation:
+
+- auth and approval endpoints are real
+- most dashboard, alerts, incidents, playback, and device data in the web app still come from the mock adapter until the next backend domain endpoints are implemented
 
 ## Seeded Demo Users
 

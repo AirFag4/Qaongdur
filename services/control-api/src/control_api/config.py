@@ -21,6 +21,7 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:5173"]
     )
     keycloak_issuer_url: str = "http://localhost:8080/realms/qaongdur-dev"
+    keycloak_discovery_url: str | None = None
     keycloak_audience: str = "qaongdur-control-api"
     keycloak_web_client_id: str = "qaongdur-web"
     keycloak_expected_algorithms: list[str] = Field(default_factory=lambda: ["RS256"])

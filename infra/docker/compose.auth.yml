@@ -1,6 +1,6 @@
 services:
   keycloak-postgres:
-    image: postgres:16-alpine
+    image: ${KEYCLOAK_POSTGRES_IMAGE}
     container_name: qaongdur-keycloak-postgres
     environment:
       POSTGRES_DB: ${KEYCLOAK_DB_NAME}
@@ -32,9 +32,10 @@ services:
       KC_HEALTH_ENABLED: "true"
       KC_METRICS_ENABLED: "true"
       KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL}
       KC_HOSTNAME_STRICT: "false"
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
     volumes:
       - ../keycloak/import:/opt/keycloak/data/import:ro
     ports:
