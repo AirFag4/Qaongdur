@@ -8,7 +8,7 @@ This monorepo is organized around a single product surface (video operations con
 - `packages/types`: Shared TypeScript domain models and API DTOs.
 - `packages/api-client`: Typed adapters that hide data sources (mock now, backend later).
 - `packages/ui`: Shared UI primitives and domain components reused by pages.
-- `services/control-api`: FastAPI control plane scaffold with auth validation, approval examples, and room for the main VMS APIs.
+- `services/control-api`: FastAPI control plane service with auth validation, persisted RTSP camera inventory, MediaMTX path reconciliation, playback search, approval examples, and room for the rest of the VMS APIs.
 - `services/vision`: FastAPI vision scaffold with demo pipeline endpoints and room for full ingest + model inference workflows.
 - `services/agent`: Planned in-app agent orchestration and tool-calling.
 - `infra/docker`, `infra/keycloak`, `infra/mediamtx`: Infrastructure setup areas.
@@ -39,6 +39,12 @@ Plan for two ingest and recording modes from the start:
 
 - External NVR/VMS integration: treat third-party NVRs as systems of record when they already own retention, playback, and export. Qaongdur should sync camera inventory, health, events, and playback references through adapter modules instead of forcing full migration.
 - Camera-direct local NVR: when a site only has IP cameras and no upstream NVR, Qaongdur should provide a lightweight local NVR path. MediaMTX relays streams, the backend records rolling segments and event clips, Postgres indexes playback metadata, and object storage keeps retained footage and evidence artifacts.
+
+Current implemented slice:
+
+- `control-api` persists camera definitions and rehydrates missing MediaMTX paths after a relay restart
+- MediaMTX serves live HLS and playback URLs for recorded spans
+- the web console can add RTSP cameras, view live video, and search playback against this local media path
 
 ## Storage Direction
 

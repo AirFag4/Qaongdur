@@ -65,6 +65,8 @@ export interface Camera {
   name: string;
   zone: string;
   streamUrl: string;
+  liveStreamUrl?: string | null;
+  playbackPath?: string | null;
   health: HealthStatus;
   fps: number;
   resolution: string;
@@ -90,6 +92,7 @@ export interface LiveStreamTile {
   latencyMs: number;
   bitrateKbps: number;
   detections: DetectionBox[];
+  hlsUrl?: string | null;
 }
 
 export interface AlertEvent {
@@ -147,6 +150,8 @@ export interface PlaybackSegment {
   endAt: string;
   alerts: number;
   motionScore: number;
+  durationSec?: number;
+  playbackUrl?: string;
 }
 
 export interface Device {
@@ -192,6 +197,13 @@ export interface PlaybackSearchParams {
   includeAlerts: boolean;
 }
 
+export interface CreateCameraInput {
+  siteId?: string;
+  name: string;
+  zone: string;
+  rtspUrl: string;
+}
+
 export interface RealtimeAlertEvent {
   type: "alert.created";
   payload: AlertEvent;
@@ -207,6 +219,7 @@ export type RealtimeEvent = RealtimeAlertEvent | RealtimeHealthEvent;
 export interface VmsApiClient {
   listSites(): Promise<Site[]>;
   listCameras(siteId?: string): Promise<Camera[]>;
+  createCamera(input: CreateCameraInput): Promise<Camera>;
   listLiveTiles(siteId?: string): Promise<LiveStreamTile[]>;
   getOverview(siteId?: string): Promise<OverviewSnapshot>;
   listAlerts(filter?: AlertFilter): Promise<AlertEvent[]>;

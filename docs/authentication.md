@@ -49,6 +49,14 @@ Current browser flow:
 
 Auth-only bootstrap remains available with `make docker-auth-up`.
 
+If Keycloak was already running from an older realm import, reset the Keycloak Postgres volume before expecting real backend auth to work:
+
+```bash
+docker compose --env-file .env -f infra/docker/compose.core.yml down
+docker volume rm docker_keycloak-postgres-data
+make docker-up
+```
+
 Host-based inner loop is still available:
 
 1. Copy `apps/web/.env.example` to `apps/web/.env`.
@@ -59,7 +67,8 @@ Host-based inner loop is still available:
 Current limitation:
 
 - auth and approval endpoints are real
-- most dashboard, alerts, incidents, playback, and device data in the web app still come from the mock adapter until the next backend domain endpoints are implemented
+- camera onboarding, camera inventory, device inventory, live HLS, overview metrics, and playback search now come from the real `control-api`
+- alerts and incidents still use placeholder backend responses until the full alert-to-incident path is implemented
 
 ## Seeded Demo Users
 
@@ -96,6 +105,7 @@ Notes:
 - `viewer` is the minimum useful role for basic read access.
 - editing `infra/keycloak/import/qaongdur-dev-realm.json` does not update an already-running realm unless you recreate the Keycloak data store and re-import from scratch
 - for a running local system, use the admin console to add users rather than editing the realm JSON
+- if your local realm was created before the built-in client scopes were added to the import, recreate the Keycloak data store so `qaongdur-web` receives full access-token claims like `sub`, `realm_access`, and `preferred_username`
 
 ## Login Methods
 

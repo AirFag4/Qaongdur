@@ -6,6 +6,7 @@ import {
   Card,
   CardDescription,
   CardTitle,
+  EmptyState,
   EvidenceClipPanel,
   LoadingState,
 } from "@qaongdur/ui";
@@ -43,8 +44,26 @@ export function IncidentDetailPage() {
     }
   }, [incidents.data, navigate, params.incidentId]);
 
-  if (incidents.isLoading || incident.isLoading || !incident.data) {
+  if (incidents.isLoading || incident.isLoading) {
     return <LoadingState label="Loading incident details..." />;
+  }
+
+  if (!incidents.data?.length) {
+    return (
+      <EmptyState
+        title="No incidents yet"
+        description="This backend slice is focused on camera onboarding, live view, and playback first."
+      />
+    );
+  }
+
+  if (!incident.data) {
+    return (
+      <EmptyState
+        title="Incident unavailable"
+        description="Select another incident once incident workflows are backed by the real API."
+      />
+    );
   }
   const incidentData = incident.data;
 

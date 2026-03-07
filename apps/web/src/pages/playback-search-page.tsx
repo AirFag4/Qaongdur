@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -33,6 +33,7 @@ export function PlaybackSearchPage() {
     };
   });
   const [activeParams, setActiveParams] = useState<PlaybackSearchParams | null>(null);
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string>();
 
   const form = useForm<PlaybackForm>({
     resolver: zodResolver(playbackSchema),
@@ -53,6 +54,21 @@ export function PlaybackSearchPage() {
     () => new Map(cameras.map((camera) => [camera.id, camera.name])),
     [cameras],
   );
+  const selectedSegment =
+    playback.data?.find((segment) => segment.id === selectedSegmentId) ?? playback.data?.[0];
+
+  useEffect(() => {
+    if (!playback.data?.length) {
+      setSelectedSegmentId(undefined);
+      return;
+    }
+
+    setSelectedSegmentId((current) =>
+      current && playback.data.some((segment) => segment.id === current)
+        ? current
+        : playback.data[0].id,
+    );
+  }, [playback.data]);
 
   return (
     <div className="space-y-3">
@@ -86,7 +102,7 @@ export function PlaybackSearchPage() {
       <Card className="space-y-3">
         <div className="flex items-center justify-between">
           <CardTitle>Timeline Results</CardTitle>
-          <CardDescription>15-minute segment buckets</CardDescription>
+          <CardDescription>Recorded spans returned by MediaMTX playback</CardDescription>
         </div>
         {!activeParams ? (
           <EmptyState
@@ -101,32 +117,66 @@ export function PlaybackSearchPage() {
             description="No segments matched this request."
           />
         ) : (
-          <div className="space-y-2">
-            {playback.data.map((segment) => (
-              <div
-                key={segment.id}
-                className="rounded-md border border-stone-700 bg-stone-950/60 p-2"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium text-stone-100">
-                    {cameraNameById.get(segment.cameraId) ?? segment.cameraId}
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(360px,460px)]">
+            <div className="space-y-2">
+              {playback.data.map((segment) => (
+                <button
+                  key={segment.id}
+                  type="button"
+                  onClick={() => setSelectedSegmentId(segment.id)}
+                  className={`w-full rounded-md border p-2 text-left transition-colors ${
+                    selectedSegment?.id === segment.id
+                      ? "border-cyan-700 bg-cyan-950/30"
+                      : "border-stone-700 bg-stone-950/60 hover:border-stone-600"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-stone-100">
+                      {cameraNameById.get(segment.cameraId) ?? segment.cameraId}
+                    </p>
+                    <p className="font-mono text-[11px] text-stone-500">
+                      {new Date(segment.startAt).toLocaleTimeString()} -{" "}
+                      {new Date(segment.endAt).toLocaleTimeString()}
+                    </p>
+                  </div>
+                  <div className="mt-2 h-2 w-full rounded bg-stone-800">
+                    <div
+                      className="h-full rounded bg-cyan-400"
+                      style={{ width: `${Math.max(segment.motionScore * 100, 4)}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] text-stone-400">
+                    Duration: {Math.round(segment.durationSec ?? 0)}s • Alerts: {segment.alerts}
                   </p>
-                  <p className="font-mono text-[11px] text-stone-500">
-                    {new Date(segment.startAt).toLocaleTimeString()} -{" "}
-                    {new Date(segment.endAt).toLocaleTimeString()}
-                  </p>
-                </div>
-                <div className="mt-2 h-2 w-full rounded bg-stone-800">
-                  <div
-                    className="h-full rounded bg-cyan-400"
-                    style={{ width: `${Math.max(segment.motionScore * 100, 4)}%` }}
-                  />
-                </div>
-                <p className="mt-1 text-[11px] text-stone-400">
-                  Motion score: {segment.motionScore} • Alerts: {segment.alerts}
-                </p>
+                </button>
+              ))}
+            </div>
+
+            <Card className="space-y-3">
+              <div>
+                <CardTitle>Playback Viewer</CardTitle>
+                <CardDescription>
+                  {selectedSegment
+                    ? `${cameraNameById.get(selectedSegment.cameraId) ?? selectedSegment.cameraId} • ${new Date(selectedSegment.startAt).toLocaleString()}`
+                    : "Select a recorded span to start playback."}
+                </CardDescription>
               </div>
-            ))}
+
+              {selectedSegment?.playbackUrl ? (
+                <video
+                  key={selectedSegment.playbackUrl}
+                  className="aspect-video w-full rounded-lg border border-stone-700 bg-black"
+                  controls
+                  preload="metadata"
+                >
+                  <source src={selectedSegment.playbackUrl} type="video/mp4" />
+                </video>
+              ) : (
+                <div className="flex aspect-video items-center justify-center rounded-lg border border-dashed border-stone-700 bg-stone-950/60 px-4 text-center text-sm text-stone-400">
+                  Playback video is only available when the real backend returns MediaMTX recording URLs.
+                </div>
+              )}
+            </Card>
           </div>
         )}
       </Card>

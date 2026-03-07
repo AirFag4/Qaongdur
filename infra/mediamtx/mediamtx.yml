@@ -1,8 +1,52 @@
 logLevel: info
 
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+        path:
+      - action: read
+        path:
+      - action: playback
+        path:
+  - user: qaongdur-api
+    pass: qaongdur-api
+    ips: []
+    permissions:
+      - action: api
+  - user: any
+    pass:
+    ips:
+      - 127.0.0.1
+      - ::1
+    permissions:
+      - action: api
+      - action: metrics
+      - action: pprof
+
 api: yes
 apiAddress: :9997
+apiAllowOrigins:
+  - "*"
+
+playback: yes
+playbackAddress: :9996
+playbackAllowOrigins:
+  - "*"
 
 rtspAddress: :8554
 hlsAddress: :8888
+hlsAllowOrigins:
+  - "*"
 webrtcAddress: :8889
+
+pathDefaults:
+  record: yes
+  recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordPartDuration: 1s
+  recordSegmentDuration: 30s
+  recordDeleteAfter: 7d

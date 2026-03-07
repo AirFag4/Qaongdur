@@ -1,6 +1,8 @@
 import type {
   AlertEvent,
   AlertFilter,
+  Camera,
+  CreateCameraInput,
   PlaybackSearchParams,
   PlaybackSegment,
   VmsApiClient,
@@ -29,6 +31,51 @@ export class MockVmsApiClient implements VmsApiClient {
     return siteId
       ? mockData.cameras.filter((camera) => camera.siteId === siteId)
       : mockData.cameras;
+  }
+
+  async createCamera(input: CreateCameraInput): Promise<Camera> {
+    await sleep(networkDelay());
+    const siteId = input.siteId ?? mockData.sites[0]?.id ?? "site-local-01";
+    const camera: Camera = {
+      id: `cam-local-${Date.now()}`,
+      siteId,
+      name: input.name,
+      zone: input.zone,
+      streamUrl: input.rtspUrl,
+      liveStreamUrl: null,
+      playbackPath: null,
+      health: "warning",
+      fps: 0,
+      resolution: "Unknown",
+      uptimePct: 0,
+      lastSeenAt: new Date().toISOString(),
+      tags: ["rtsp", "mock"],
+    };
+
+    mockData.cameras.unshift(camera);
+    mockData.liveTiles.unshift({
+      cameraId: camera.id,
+      isLive: false,
+      latencyMs: 0,
+      bitrateKbps: 0,
+      detections: [],
+      hlsUrl: null,
+    });
+    mockData.devices.unshift({
+      id: `dev-${camera.id}`,
+      siteId,
+      name: input.name,
+      type: "camera",
+      model: "RTSP Camera",
+      ipAddress: "mock.local",
+      firmware: "mock",
+      health: "warning",
+      lastHeartbeatAt: camera.lastSeenAt,
+      uptimePct: 0,
+      packetLossPct: 0,
+    });
+
+    return camera;
   }
 
   async listLiveTiles(siteId?: string) {
@@ -161,6 +208,7 @@ export class MockVmsApiClient implements VmsApiClient {
         endAt: new Date(end).toISOString(),
         alerts: Math.floor(base * 5),
         motionScore: Number((0.15 + base * 0.85).toFixed(2)),
+        durationSec: (end - start) / 1000,
       };
     });
   }

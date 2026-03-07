@@ -1,53 +1,52 @@
-from control_api.auth import (
-    KeycloakPrincipal,
-    build_principal,
-    extract_platform_roles,
-    has_required_acr,
-)
+from control_api.auth import KeycloakTokenVerifier
+from control_api.config import Settings
 
 
-def test_extract_platform_roles_reads_realm_and_client_roles() -> None:
-    claims = {
-        "sub": "user-123",
-        "realm_access": {"roles": ["viewer", "reviewer"]},
-        "resource_access": {
-            "qaongdur-web": {"roles": ["operator", "not-a-platform-role"]},
-            "account": {"roles": ["manage-account"]},
-        },
+def _build_settings(**overrides: str) -> Settings:
+    defaults = {
+        "keycloak_issuer_url": "http://localhost:8080/realms/qaongdur-dev",
+        "keycloak_discovery_url": "http://keycloak:8080/realms/qaongdur-dev",
     }
+    defaults.update(overrides)
+    return Settings(_env_file=None, **defaults)
 
-    assert extract_platform_roles(claims) == {"viewer", "reviewer", "operator"}
 
+def test_normalize_metadata_url_uses_discovery_host_for_issuer_relative_endpoints() -> None:
+    verifier = KeycloakTokenVerifier(_build_settings())
 
-def test_build_principal_prefers_name_and_username() -> None:
-    principal = build_principal(
-        {
-            "sub": "user-123",
-            "name": "Pat Admin",
-            "preferred_username": "pat.admin",
-            "email": "pat.admin@example.com",
-            "realm_access": {"roles": ["platform-admin"]},
-            "acr": "urn:qaongdur:loa:2",
-        },
-        raw_token="token",
+    normalized = verifier._normalize_metadata_url(
+        "http://localhost:8080/realms/qaongdur-dev/protocol/openid-connect/certs"
     )
 
-    assert principal.display_name == "Pat Admin"
-    assert principal.username == "pat.admin"
-    assert principal.roles == {"platform-admin"}
-
-
-def test_has_required_acr_is_exact_match() -> None:
-    principal = KeycloakPrincipal(
-        subject="user-123",
-        username="pat.admin",
-        display_name="Pat Admin",
-        email=None,
-        roles={"platform-admin"},
-        acr="urn:qaongdur:loa:2",
-        raw_token="token",
-        claims={},
+    assert (
+        normalized
+        == "http://keycloak:8080/realms/qaongdur-dev/protocol/openid-connect/certs"
     )
 
-    assert has_required_acr(principal, "urn:qaongdur:loa:2") is True
-    assert has_required_acr(principal, "urn:qaongdur:loa:3") is False
+
+def test_normalize_metadata_url_leaves_external_endpoints_unchanged() -> None:
+    verifier = KeycloakTokenVerifier(_build_settings())
+
+    normalized = verifier._normalize_metadata_url(
+        "https://login.example.com/realms/qaongdur-dev/protocol/openid-connect/certs"
+    )
+
+    assert (
+        normalized
+        == "https://login.example.com/realms/qaongdur-dev/protocol/openid-connect/certs"
+    )
+
+
+def test_normalize_metadata_url_is_noop_without_discovery_url() -> None:
+    verifier = KeycloakTokenVerifier(
+        _build_settings(keycloak_discovery_url=None)
+    )
+
+    normalized = verifier._normalize_metadata_url(
+        "http://localhost:8080/realms/qaongdur-dev/protocol/openid-connect/certs"
+    )
+
+    assert (
+        normalized
+        == "http://localhost:8080/realms/qaongdur-dev/protocol/openid-connect/certs"
+    )

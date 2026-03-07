@@ -1,7 +1,7 @@
 # Qaongdur Monorepo
 
 Docker-first VMS + Vision AI + Agent AI project.  
-The repo now includes the initial monorepo structure, the first frontend web console, and Keycloak-based auth foundations for browser sessions, passkeys, and backend token validation.
+The repo now includes the initial monorepo structure, the first frontend web console, Keycloak-based auth foundations, and the first real backend slice for RTSP camera onboarding, live HLS, and playback search through MediaMTX.
 
 ## Quick Start
 
@@ -30,7 +30,9 @@ Current behavior in this mode:
 
 - Keycloak, control-api, Postgres, Redis, object storage, MediaMTX, and the built web app all run in containers
 - auth is real
-- most domain data in the web UI is still mock-backed until the next backend slice lands
+- camera inventory, device inventory, live tiles, overview metrics, RTSP onboarding, and playback search use the real `control-api`
+- MediaMTX records rolling segments and serves playback URLs for finalized recordings
+- alerts and incidents are still placeholder backend responses rather than a full detection-to-incident pipeline
 
 Login path in this mode:
 
@@ -154,7 +156,7 @@ Started the next backend and delivery milestone:
 - domain/UI reuse belongs in `packages/ui`
 - all shared domain contracts go in `packages/types`
 - all backend integration logic should go through `packages/api-client`
-- today, `packages/api-client/src/index.ts` still resolves the main VMS data calls to `mockApiClient`
+- `packages/api-client/src/index.ts` now uses the real backend when `VITE_CONTROL_API_BASE_URL` is set and only falls back to mocks on network failure for read-only queries
 
 ### Current Delivery Order
 
@@ -207,6 +209,18 @@ pnpm --filter @qaongdur/web lint
 pnpm --filter @qaongdur/web build
 python3 -m compileall services/control-api/src services/vision/src
 docker compose --env-file .env.example -f infra/docker/compose.core.yml --profile core config
+```
+
+## Keycloak Reset Note
+
+If your local `qaongdur-dev` realm was created before the built-in client scopes were added to `infra/keycloak/import/qaongdur-dev-realm.json`, the web client can receive stripped access tokens that break backend auth.
+
+For a local development reset, recreate the Keycloak data store and let the realm import run again:
+
+```bash
+docker compose --env-file .env -f infra/docker/compose.core.yml down
+docker volume rm docker_keycloak-postgres-data
+make docker-up
 ```
 
 ## Planning Docs

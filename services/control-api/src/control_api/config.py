@@ -31,6 +31,18 @@ class Settings(BaseSettings):
     )
     keycloak_step_up_acr: str = "urn:qaongdur:loa:2"
     oidc_cache_ttl_seconds: int = 300
+    camera_store_path: str = "./data/cameras.json"
+    default_site_id: str = "site-local-01"
+    default_site_code: str = "LOCAL-01"
+    default_site_name: str = "Local Camera Lab"
+    default_site_region: str = "Local"
+    mediamtx_api_url: str = "http://mediamtx:9997"
+    mediamtx_api_user: str = "qaongdur-api"
+    mediamtx_api_password: str = "qaongdur-api"
+    mediamtx_hls_public_url: str = "http://localhost:8888"
+    mediamtx_playback_internal_url: str = "http://mediamtx:9996"
+    mediamtx_playback_public_url: str = "http://localhost:9996"
+    mediamtx_record_segment_duration_seconds: int = 30
 
     @field_validator(
         "control_api_cors_origins",

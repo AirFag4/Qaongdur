@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Any, Iterable, Literal
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 import jwt
@@ -131,9 +132,17 @@ class KeycloakTokenVerifier:
             "/.well-known/openid-configuration"
         )
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(discovery_url)
-            response.raise_for_status()
-            metadata = response.json()
+            try:
+                response = await client.get(discovery_url)
+                response.raise_for_status()
+                metadata = response.json()
+            except httpx.HTTPError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Unable to reach Keycloak OIDC discovery metadata.",
+                ) from exc
+
+        metadata["jwks_uri"] = self._normalize_metadata_url(str(metadata["jwks_uri"]))
 
         self._oidc_metadata = metadata
         self._oidc_metadata_expires_at = now + timedelta(
@@ -147,15 +156,46 @@ class KeycloakTokenVerifier:
             return self._jwks
 
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(jwks_uri)
-            response.raise_for_status()
-            jwks = response.json()
+            try:
+                response = await client.get(jwks_uri)
+                response.raise_for_status()
+                jwks = response.json()
+            except httpx.HTTPError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Unable to reach the Keycloak JWKS endpoint.",
+                ) from exc
 
         self._jwks = jwks
         self._jwks_expires_at = now + timedelta(
             seconds=self.settings.oidc_cache_ttl_seconds
         )
         return jwks
+
+    def _normalize_metadata_url(self, url: str) -> str:
+        discovery_base = self.settings.keycloak_discovery_url
+        if not discovery_base:
+            return url
+
+        discovery_parts = urlsplit(discovery_base)
+        issuer_parts = urlsplit(self.settings.keycloak_issuer_url)
+        target_parts = urlsplit(url)
+
+        if (
+            target_parts.scheme != issuer_parts.scheme
+            or target_parts.netloc != issuer_parts.netloc
+        ):
+            return url
+
+        return urlunsplit(
+            (
+                discovery_parts.scheme,
+                discovery_parts.netloc,
+                target_parts.path,
+                target_parts.query,
+                target_parts.fragment,
+            )
+        )
 
     def _resolve_signing_key(self, token: str, jwks: dict[str, Any]) -> Any:
         kid = jwt.get_unverified_header(token).get("kid")

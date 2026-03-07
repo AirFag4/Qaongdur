@@ -112,10 +112,12 @@ services:
     container_name: qaongdur-mediamtx
     volumes:
       - ../mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      - mediamtx-recordings:/recordings
     ports:
       - "${MEDIAMTX_RTSP_PORT}:8554"
       - "${MEDIAMTX_HLS_PORT}:8888"
       - "${MEDIAMTX_WEBRTC_PORT}:8889"
+      - "${MEDIAMTX_PLAYBACK_PORT}:9996"
       - "${MEDIAMTX_API_PORT}:9997"
 
   control-api:
@@ -135,6 +137,20 @@ services:
       QAONGDUR_KEYCLOAK_WEB_CLIENT_ID: qaongdur-web
       QAONGDUR_KEYCLOAK_EXPECTED_ALGORITHMS: RS256
       QAONGDUR_KEYCLOAK_STEP_UP_ACR: ${QAONGDUR_KEYCLOAK_STEP_UP_ACR}
+      QAONGDUR_CAMERA_STORE_PATH: /data/cameras.json
+      QAONGDUR_DEFAULT_SITE_ID: site-local-01
+      QAONGDUR_DEFAULT_SITE_CODE: LOCAL-01
+      QAONGDUR_DEFAULT_SITE_NAME: Local Camera Lab
+      QAONGDUR_DEFAULT_SITE_REGION: Local
+      QAONGDUR_MEDIAMTX_API_URL: http://mediamtx:9997
+      QAONGDUR_MEDIAMTX_API_USER: qaongdur-api
+      QAONGDUR_MEDIAMTX_API_PASSWORD: qaongdur-api
+      QAONGDUR_MEDIAMTX_HLS_PUBLIC_URL: http://localhost:${MEDIAMTX_HLS_PORT}
+      QAONGDUR_MEDIAMTX_PLAYBACK_INTERNAL_URL: http://mediamtx:9996
+      QAONGDUR_MEDIAMTX_PLAYBACK_PUBLIC_URL: http://localhost:${MEDIAMTX_PLAYBACK_PORT}
+      QAONGDUR_MEDIAMTX_RECORD_SEGMENT_DURATION_SECONDS: 30
+    volumes:
+      - control-api-data:/data
     ports:
       - "${CONTROL_API_PORT}:8000"
     depends_on:
@@ -222,3 +238,5 @@ volumes:
   keycloak-postgres-data:
   postgres-data:
   object-storage-data:
+  mediamtx-recordings:
+  control-api-data:

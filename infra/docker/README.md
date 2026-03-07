@@ -29,6 +29,7 @@ Notes:
 
 - `object-storage-bootstrap` is a one-shot seed job; `Exited (0)` is the expected success state after it creates the bucket
 - if you copied `.env` before the object-storage rename, refresh it from `.env.example` or update the storage keys manually
+- if your `qaongdur-dev` Keycloak realm was created before the client-scope fix landed, reset `docker_keycloak-postgres-data` and restart so browser tokens include `sub`, roles, and profile claims
 
 ## Current Core Services
 
@@ -43,3 +44,15 @@ Notes:
 - `mediamtx`
 
 The `vision` service is scaffolded and available under the `vision-cpu` profile via `make vision-up`.
+
+## Current Media Slice
+
+The `core` stack now supports a real RTSP media path:
+
+- add an RTSP camera from the Devices page
+- `control-api` persists the camera and programs MediaMTX
+- live monitoring uses MediaMTX HLS
+- playback search returns MediaMTX playback URLs for recorded spans
+- stored cameras are rehydrated into MediaMTX after a media-relay restart
+
+MediaMTX records short rolling segments in local development so playback becomes available quickly after ingest starts.

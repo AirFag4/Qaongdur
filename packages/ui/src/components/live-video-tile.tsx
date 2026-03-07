@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+import Hls from "hls.js";
 import type { Camera, LiveStreamTile } from "@qaongdur/types";
 import { Badge } from "./ui/badge";
 import { HealthStatusBadge } from "./health-status-badge";
@@ -19,6 +21,62 @@ export function LiveVideoTile({
   tile: LiveStreamTile;
   compact?: boolean;
 }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [streamError, setStreamError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    setStreamError(null);
+
+    if (!tile.hlsUrl) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      return;
+    }
+
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = tile.hlsUrl;
+      void video.play().catch(() => undefined);
+      return () => {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      };
+    }
+
+    if (!Hls.isSupported()) {
+      setStreamError("This browser cannot play HLS live streams.");
+      return;
+    }
+
+    const hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: true,
+    });
+    hls.loadSource(tile.hlsUrl);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      void video.play().catch(() => undefined);
+    });
+    hls.on(Hls.Events.ERROR, (_, data) => {
+      if (data.fatal) {
+        setStreamError("Unable to load the live stream.");
+      }
+    });
+
+    return () => {
+      hls.destroy();
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    };
+  }, [tile.hlsUrl]);
+
   return (
     <div className="group relative overflow-hidden rounded-xl border border-stone-700 bg-stone-900">
       <div
@@ -27,8 +85,31 @@ export function LiveVideoTile({
           compact ? "aspect-video" : "aspect-[16/10]",
         )}
       >
+        {tile.hlsUrl ? (
+          <video
+            ref={videoRef}
+            className="absolute inset-0 h-full w-full object-cover"
+            autoPlay
+            muted
+            playsInline
+          />
+        ) : null}
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,transparent_72%,rgba(8,8,8,0.72))]" />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(0,0,0,0.18)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.18)_1px,transparent_1px)] bg-[size:24px_24px] opacity-35" />
+
+        {!tile.hlsUrl ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="rounded-full border border-stone-700 bg-stone-950/85 px-3 py-1 text-[11px] font-medium text-stone-300">
+              Awaiting live stream
+            </p>
+          </div>
+        ) : null}
+
+        {streamError ? (
+          <div className="absolute left-2 top-2 rounded-md border border-amber-500/40 bg-amber-950/85 px-2 py-1 text-[11px] text-amber-200">
+            {streamError}
+          </div>
+        ) : null}
 
         {tile.detections.map((box) => (
           <div

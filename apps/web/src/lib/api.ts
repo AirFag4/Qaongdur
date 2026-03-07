@@ -1,6 +1,18 @@
 import { createApiClient, createRealtimeSocket } from "@qaongdur/api-client";
+import { getControlApiBaseUrl, getKeycloakClient } from "../auth/keycloak";
 
-export const apiClient = createApiClient();
+const getAccessToken = () => {
+  try {
+    return getKeycloakClient().token ?? undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const apiClient = createApiClient({
+  baseUrl: getControlApiBaseUrl(),
+  getAccessToken,
+});
 export const realtimeSocket = createRealtimeSocket();
 
 export const queryKeys = {

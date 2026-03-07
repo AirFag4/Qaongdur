@@ -26,7 +26,7 @@ This document covers three layers:
 | Mock data source | `packages/api-client/src/mock-api-client.ts` | Mock implementation of `VmsApiClient` | Implemented |
 | Mock realtime transport | `packages/api-client/src/mock-event-socket.ts` | Mock websocket-like event feed | Implemented |
 | Frontend API bootstrap | `apps/web/src/lib/api.ts` | Instantiates the client/socket and defines React Query keys | Implemented |
-| Control plane backend | `services/control-api` | FastAPI scaffold with Keycloak token validation, auth endpoints, approval examples, and audit logging hooks | Partial |
+| Control plane backend | `services/control-api` | FastAPI service with Keycloak token validation, camera onboarding, live/playback/device endpoints, auth endpoints, approval examples, and audit logging hooks | Partial |
 | Vision pipeline | `services/vision` | Demo-ready vision scaffold with health endpoints and seeded pipeline responses | Partial |
 | Agent backend | `services/agent` | In-app assistant sessions, tool calls, approvals, audit trails | Planned |
 
@@ -36,14 +36,15 @@ This document covers three layers:
 
 Current package exports:
 
-- `createApiClient(): VmsApiClient`
+- `createApiClient(config?): VmsApiClient`
 - `createRealtimeSocket(): MockRealtimeEventSocket`
 
 Current behavior:
 
-- `createApiClient()` always returns the singleton `mockApiClient`.
+- `createApiClient()` returns the singleton `mockApiClient` when no backend config is provided.
+- when `baseUrl` and `getAccessToken` are provided, the client uses the real HTTP backend first and only falls back to mocks on network failure for read-only queries.
 - `createRealtimeSocket()` always returns a `MockRealtimeEventSocket`.
-- This means the main VMS pages still work with no HTTP backend server at all.
+- `createCamera()` is backend-only and does not fall back to the mock adapter.
 
 Current run modes:
 
@@ -59,6 +60,7 @@ The frontend only talks to the data layer through this interface:
 | --- | --- | --- | --- | --- |
 | `listSites()` | none | `Promise<Site[]>` | returns all sites | layout bootstrapping |
 | `listCameras(siteId?)` | optional `siteId` | `Promise<Camera[]>` | returns all cameras or a site-scoped subset | layout bootstrapping, site switcher |
+| `createCamera(input)` | `CreateCameraInput` | `Promise<Camera>` | creates a persisted RTSP camera through the backend | devices page |
 | `listLiveTiles(siteId?)` | optional `siteId` | `Promise<LiveStreamTile[]>` | returns live stream state and detections | live page |
 | `getOverview(siteId?)` | optional `siteId` | `Promise<OverviewSnapshot>` | computes summary metrics, incidents, alerts, and health buckets | overview page |
 | `listAlerts(filter?)` | `AlertFilter` | `Promise<AlertEvent[]>` | supports site, camera, severity, status, and text filtering | alerts page, live side rail |
@@ -112,6 +114,8 @@ All of the following types live in `packages/types/src/index.ts`.
 - `name: string`
 - `zone: string`
 - `streamUrl: string`
+- `liveStreamUrl?: string | null`
+- `playbackPath?: string | null`
 - `health: HealthStatus`
 - `fps: number`
 - `resolution: string`
@@ -137,6 +141,7 @@ All of the following types live in `packages/types/src/index.ts`.
 - `latencyMs: number`
 - `bitrateKbps: number`
 - `detections: DetectionBox[]`
+- `hlsUrl?: string | null`
 
 ### `AlertEvent`
 
@@ -194,6 +199,8 @@ All of the following types live in `packages/types/src/index.ts`.
 - `endAt: string`
 - `alerts: number`
 - `motionScore: number`
+- `durationSec?: number`
+- `playbackUrl?: string`
 
 ### `Device`
 

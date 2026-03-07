@@ -10,6 +10,7 @@ This is the first always-on infrastructure service in the planned `core` Compose
   - realm: `qaongdur-dev`
   - browser client: `qaongdur-web`
   - API audience client: `qaongdur-control-api`
+  - built-in client scopes restored for `basic`, `web-origins`, `profile`, `email`, `roles`, and `acr`
   - platform roles: `platform-admin`, `site-admin`, `operator`, `reviewer`, `viewer`
   - seeded demo users for each role profile
 
@@ -23,6 +24,8 @@ When Keycloak is running locally, use:
 
 Adding a user for the VMS app means adding that user to the `qaongdur-dev` realm and
 assigning the appropriate realm roles.
+
+If your local Keycloak volume was created before the built-in client scopes were added to the realm import, recreate the Keycloak Postgres volume and restart the stack so `qaongdur-web` receives full access-token claims for backend auth.
 
 Recommended local sequence:
 
