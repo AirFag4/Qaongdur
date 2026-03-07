@@ -1,0 +1,43 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Space Grotesk", sans-serif;
+  color: #f5f5f4;
+  background-color: #0f0d0c;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #0f0d0c;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.font-mono {
+  font-family: "IBM Plex Mono", monospace;
+}
+
+@layer components {
+  .form-input {
+    @apply h-9 rounded-md border border-stone-700 bg-stone-950 px-2 text-sm text-stone-100 outline-none transition-colors placeholder:text-stone-500 focus:border-cyan-700;
+  }
+
+  .form-select {
+    @apply h-9 rounded-md border border-stone-700 bg-stone-950 px-2 text-sm text-stone-100 outline-none transition-colors focus:border-cyan-700;
+  }
+}

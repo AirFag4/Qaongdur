@@ -1,0 +1,27 @@
+import { Navigate, Route, Routes } from "react-router-dom";
+import { OperatorLayout } from "./app/operator-layout";
+import { AlertsEventsPage } from "./pages/alerts-events-page";
+import { DevicesPage } from "./pages/devices-page";
+import { IncidentDetailPage } from "./pages/incident-detail-page";
+import { LiveMonitoringPage } from "./pages/live-monitoring-page";
+import { OverviewPage } from "./pages/overview-page";
+import { PlaybackSearchPage } from "./pages/playback-search-page";
+
+function App() {
+  return (
+    <Routes>
+      <Route element={<OperatorLayout />}>
+        <Route index element={<OverviewPage />} />
+        <Route path="live" element={<LiveMonitoringPage />} />
+        <Route path="alerts" element={<AlertsEventsPage />} />
+        <Route path="incidents" element={<IncidentDetailPage />} />
+        <Route path="incidents/:incidentId" element={<IncidentDetailPage />} />
+        <Route path="playback" element={<PlaybackSearchPage />} />
+        <Route path="devices" element={<DevicesPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+export default App;

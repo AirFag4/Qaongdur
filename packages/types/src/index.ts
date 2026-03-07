@@ -1,0 +1,173 @@
+export type HealthStatus = "healthy" | "warning" | "critical" | "offline";
+export type AlertSeverity = "low" | "medium" | "high" | "critical";
+export type IncidentStatus =
+  | "open"
+  | "triaging"
+  | "investigating"
+  | "resolved";
+export type AlertStatus = "new" | "acknowledged" | "investigating" | "resolved";
+export type DeviceType = "camera" | "nvr" | "gateway" | "sensor";
+
+export interface Site {
+  id: string;
+  name: string;
+  code: string;
+  region: string;
+}
+
+export interface Camera {
+  id: string;
+  siteId: string;
+  name: string;
+  zone: string;
+  streamUrl: string;
+  health: HealthStatus;
+  fps: number;
+  resolution: string;
+  uptimePct: number;
+  lastSeenAt: string;
+  tags: string[];
+}
+
+export interface DetectionBox {
+  id: string;
+  label: string;
+  confidence: number;
+  severity: AlertSeverity;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface LiveStreamTile {
+  cameraId: string;
+  isLive: boolean;
+  latencyMs: number;
+  bitrateKbps: number;
+  detections: DetectionBox[];
+}
+
+export interface AlertEvent {
+  id: string;
+  cameraId: string;
+  siteId: string;
+  title: string;
+  summary: string;
+  rule: string;
+  severity: AlertSeverity;
+  status: AlertStatus;
+  confidence: number;
+  happenedAt: string;
+}
+
+export interface EvidenceClip {
+  id: string;
+  cameraId: string;
+  title: string;
+  type: "video" | "snapshot" | "report";
+  startAt: string;
+  endAt: string;
+  durationSec: number;
+  storageRef: string;
+}
+
+export interface IncidentTimelineItem {
+  id: string;
+  happenedAt: string;
+  actor: string;
+  action: string;
+  note: string;
+}
+
+export interface Incident {
+  id: string;
+  title: string;
+  siteId: string;
+  severity: AlertSeverity;
+  status: IncidentStatus;
+  openedAt: string;
+  closedAt?: string;
+  cameraIds: string[];
+  owner: string;
+  summary: string;
+  tags: string[];
+  timeline: IncidentTimelineItem[];
+  evidence: EvidenceClip[];
+}
+
+export interface PlaybackSegment {
+  id: string;
+  cameraId: string;
+  startAt: string;
+  endAt: string;
+  alerts: number;
+  motionScore: number;
+}
+
+export interface Device {
+  id: string;
+  siteId: string;
+  name: string;
+  type: DeviceType;
+  model: string;
+  ipAddress: string;
+  firmware: string;
+  health: HealthStatus;
+  lastHeartbeatAt: string;
+  uptimePct: number;
+  packetLossPct: number;
+}
+
+export interface OverviewMetric {
+  label: string;
+  value: string;
+  delta: string;
+  trend: "up" | "down" | "flat";
+}
+
+export interface OverviewSnapshot {
+  metrics: OverviewMetric[];
+  topAlerts: AlertEvent[];
+  activeIncidents: Incident[];
+  streamHealth: { label: string; value: number }[];
+}
+
+export interface AlertFilter {
+  siteId?: string;
+  cameraId?: string;
+  severity?: AlertSeverity | "all";
+  status?: AlertStatus | "all";
+  search?: string;
+}
+
+export interface PlaybackSearchParams {
+  cameraIds: string[];
+  from: string;
+  to: string;
+  includeAlerts: boolean;
+}
+
+export interface RealtimeAlertEvent {
+  type: "alert.created";
+  payload: AlertEvent;
+}
+
+export interface RealtimeHealthEvent {
+  type: "camera.health_changed";
+  payload: { cameraId: string; health: HealthStatus; happenedAt: string };
+}
+
+export type RealtimeEvent = RealtimeAlertEvent | RealtimeHealthEvent;
+
+export interface VmsApiClient {
+  listSites(): Promise<Site[]>;
+  listCameras(siteId?: string): Promise<Camera[]>;
+  listLiveTiles(siteId?: string): Promise<LiveStreamTile[]>;
+  getOverview(siteId?: string): Promise<OverviewSnapshot>;
+  listAlerts(filter?: AlertFilter): Promise<AlertEvent[]>;
+  listIncidents(): Promise<Incident[]>;
+  getIncidentById(id: string): Promise<Incident | undefined>;
+  searchPlayback(params: PlaybackSearchParams): Promise<PlaybackSegment[]>;
+  listDevices(siteId?: string): Promise<Device[]>;
+}

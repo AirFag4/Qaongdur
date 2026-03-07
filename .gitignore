@@ -1,0 +1,28 @@
+# Node / frontend
+node_modules
+**/node_modules
+dist
+build
+.vite
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# OS and editor
+.DS_Store
+.idea
+.vscode
+
+# Python
+__pycache__
+*.pyc
+.venv

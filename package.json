@@ -1,0 +1,14 @@
+{
+  "name": "qaongdur",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.6.1",
+  "scripts": {
+    "setup": "pnpm install",
+    "dev": "pnpm --filter @qaongdur/web dev",
+    "build": "pnpm -r --if-present build",
+    "lint": "pnpm -r --if-present lint",
+    "test": "pnpm -r --if-present test",
+    "docker-up": "echo \"Compose files will be added under infra/docker in a later milestone.\""
+  }
+}
