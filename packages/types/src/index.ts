@@ -205,6 +205,93 @@ export interface CreateCameraInput {
   rtspUrl: string;
 }
 
+export type VisionTrackLabel = "person" | "vehicle";
+
+export interface VisionSource {
+  id: string;
+  siteId: string;
+  cameraId: string;
+  cameraName: string;
+  filePath: string;
+  durationSec: number;
+  frameWidth: number;
+  frameHeight: number;
+  sourceFps: number;
+  trackCount: number;
+}
+
+export interface VisionStorageStatus {
+  usedBytes: number;
+  limitBytes: number;
+  artifactCount: number;
+  freeBytes: number;
+}
+
+export interface VisionJobStatus {
+  id: string;
+  status: "running" | "completed" | "failed";
+  sourceIds: string[];
+  sampledFps: number;
+  trackCount: number;
+  startedAt: string;
+  finishedAt?: string | null;
+  detail?: string | null;
+}
+
+export interface VisionPipelineStatus {
+  sampleMode: boolean;
+  detector: {
+    available: boolean;
+    modelName: string;
+    detail: string;
+  };
+  embedding: {
+    modelName: string;
+  };
+  face: {
+    enabled: boolean;
+    modelName: string;
+  };
+  latestJob?: VisionJobStatus | null;
+  storage: VisionStorageStatus;
+}
+
+export interface CropTrackFilter {
+  sourceId?: string;
+  label?: VisionTrackLabel | "all";
+}
+
+export interface CropTrack {
+  id: string;
+  sourceId: string;
+  siteId: string;
+  cameraId: string;
+  cameraName: string;
+  label: VisionTrackLabel;
+  detectorLabel: string;
+  firstSeenAt: string;
+  middleSeenAt: string;
+  lastSeenAt: string;
+  firstSeenOffsetMs: number;
+  middleSeenOffsetMs: number;
+  lastSeenOffsetMs: number;
+  firstSeenOffsetLabel: string;
+  middleSeenOffsetLabel: string;
+  lastSeenOffsetLabel: string;
+  frameCount: number;
+  sampleFps: number;
+  maxConfidence: number;
+  avgConfidence: number;
+  embeddingStatus: string;
+  embeddingModel?: string | null;
+  faceStatus: string;
+  faceModel?: string | null;
+  closedReason: string;
+  firstCropDataUrl: string;
+  middleCropDataUrl: string;
+  lastCropDataUrl: string;
+}
+
 export interface RealtimeAlertEvent {
   type: "alert.created";
   payload: AlertEvent;
@@ -230,4 +317,8 @@ export interface VmsApiClient {
   getIncidentById(id: string): Promise<Incident | undefined>;
   searchPlayback(params: PlaybackSearchParams): Promise<PlaybackSegment[]>;
   listDevices(siteId?: string): Promise<Device[]>;
+  listVisionSources(): Promise<VisionSource[]>;
+  getVisionStatus(): Promise<VisionPipelineStatus>;
+  runVisionMockJob(sourceIds?: string[]): Promise<VisionJobStatus>;
+  listCropTracks(filter?: CropTrackFilter): Promise<CropTrack[]>;
 }

@@ -30,6 +30,12 @@ from .mediamtx import (
     path_state_to_health,
     raise_as_bad_gateway,
 )
+from .vision import (
+    VisionServiceClient,
+    VisionServiceError,
+    get_vision_service_client,
+    raise_as_bad_gateway as raise_vision_bad_gateway,
+)
 
 
 class AgentApprovalBody(BaseModel):
@@ -63,6 +69,10 @@ class PlaybackSearchBody(BaseModel):
     from_: str = Field(alias="from")
     to: str
     includeAlerts: bool = True
+
+
+class VisionMockJobBody(BaseModel):
+    sourceIds: list[str] = Field(default_factory=list)
 
 
 ALL_PLATFORM_ROLES: tuple[PlatformRole, ...] = (
@@ -506,6 +516,52 @@ def create_app() -> FastAPI:
 
         segments.sort(key=lambda item: str(item["startAt"]))
         return segments
+
+    @app.get("/api/v1/vision/status")
+    async def get_vision_status(
+        _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
+        vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
+    ) -> dict[str, object]:
+        try:
+            return await vision_client.get_status()
+        except VisionServiceError as error:
+            raise raise_vision_bad_gateway(error) from error
+
+    @app.get("/api/v1/vision/mock-sources")
+    async def list_vision_mock_sources(
+        _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
+        vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
+    ) -> dict[str, object]:
+        try:
+            return await vision_client.list_sources()
+        except VisionServiceError as error:
+            raise raise_vision_bad_gateway(error) from error
+
+    @app.post("/api/v1/vision/mock-jobs/run")
+    async def run_vision_mock_job(
+        body: VisionMockJobBody,
+        _: Annotated[
+            KeycloakPrincipal,
+            Depends(require_roles("site-admin", "platform-admin")),
+        ],
+        vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
+    ) -> dict[str, object]:
+        try:
+            return await vision_client.run_mock_job(source_ids=body.sourceIds)
+        except VisionServiceError as error:
+            raise raise_vision_bad_gateway(error) from error
+
+    @app.get("/api/v1/vision/crop-tracks")
+    async def list_vision_crop_tracks(
+        _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
+        vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
+        sourceId: str | None = None,
+        label: str | None = None,
+    ) -> dict[str, object]:
+        try:
+            return await vision_client.list_crop_tracks(source_id=sourceId, label=label)
+        except VisionServiceError as error:
+            raise raise_vision_bad_gateway(error) from error
 
     @app.get("/api/v1/devices")
     async def list_devices(

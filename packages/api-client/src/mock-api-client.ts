@@ -2,15 +2,125 @@ import type {
   AlertEvent,
   AlertFilter,
   Camera,
+  CropTrack,
+  CropTrackFilter,
   CreateCameraInput,
   PlaybackSearchParams,
   PlaybackSegment,
   VmsApiClient,
+  VisionJobStatus,
+  VisionPipelineStatus,
+  VisionSource,
 } from "@qaongdur/types";
 import { mockData } from "./mock-data";
 
 const networkDelay = () => 140 + Math.round(Math.random() * 220);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const createSvgDataUrl = (label: string, hue: number) =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320">
+      <defs>
+        <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="hsl(${hue},70%,32%)"/>
+          <stop offset="100%" stop-color="hsl(${(hue + 40) % 360},60%,18%)"/>
+        </linearGradient>
+      </defs>
+      <rect width="240" height="320" fill="url(#bg)"/>
+      <rect x="28" y="44" width="184" height="232" rx="18" fill="rgba(0,0,0,0.22)" stroke="rgba(255,255,255,0.28)"/>
+      <text x="120" y="166" text-anchor="middle" fill="#f5f5f4" font-family="monospace" font-size="24">${label}</text>
+    </svg>`,
+  )}`;
+
+const mockVisionSources: VisionSource[] = [
+  {
+    id: "source-people-walking",
+    siteId: "site-local-01",
+    cameraId: "cam-people-walking",
+    cameraName: "People Walking",
+    filePath: "/mock-videos/people-walking.mp4",
+    durationSec: 44,
+    frameWidth: 1280,
+    frameHeight: 720,
+    sourceFps: 24,
+    trackCount: 2,
+  },
+  {
+    id: "source-vehicles",
+    siteId: "site-local-01",
+    cameraId: "cam-vehicles",
+    cameraName: "Vehicles",
+    filePath: "/mock-videos/vehicles.mp4",
+    durationSec: 35,
+    frameWidth: 1280,
+    frameHeight: 720,
+    sourceFps: 30,
+    trackCount: 2,
+  },
+];
+
+const mockCropTracks: CropTrack[] = [
+  {
+    id: "trk-mock-person-1",
+    sourceId: "source-people-walking",
+    siteId: "site-local-01",
+    cameraId: "cam-people-walking",
+    cameraName: "People Walking",
+    label: "person",
+    detectorLabel: "person",
+    firstSeenAt: new Date().toISOString(),
+    middleSeenAt: new Date().toISOString(),
+    lastSeenAt: new Date().toISOString(),
+    firstSeenOffsetMs: 4000,
+    middleSeenOffsetMs: 8200,
+    lastSeenOffsetMs: 12800,
+    firstSeenOffsetLabel: "00:00:04.000",
+    middleSeenOffsetLabel: "00:00:08.200",
+    lastSeenOffsetLabel: "00:00:12.800",
+    frameCount: 9,
+    sampleFps: 2,
+    maxConfidence: 0.94,
+    avgConfidence: 0.88,
+    embeddingStatus: "fallback",
+    embeddingModel: "histogram-fallback",
+    faceStatus: "unavailable",
+    faceModel: "InspireFace-small",
+    closedReason: "track-gap",
+    firstCropDataUrl: createSvgDataUrl("person first", 205),
+    middleCropDataUrl: createSvgDataUrl("person mid", 215),
+    lastCropDataUrl: createSvgDataUrl("person last", 225),
+  },
+  {
+    id: "trk-mock-vehicle-1",
+    sourceId: "source-vehicles",
+    siteId: "site-local-01",
+    cameraId: "cam-vehicles",
+    cameraName: "Vehicles",
+    label: "vehicle",
+    detectorLabel: "car",
+    firstSeenAt: new Date().toISOString(),
+    middleSeenAt: new Date().toISOString(),
+    lastSeenAt: new Date().toISOString(),
+    firstSeenOffsetMs: 2000,
+    middleSeenOffsetMs: 6900,
+    lastSeenOffsetMs: 14000,
+    firstSeenOffsetLabel: "00:00:02.000",
+    middleSeenOffsetLabel: "00:00:06.900",
+    lastSeenOffsetLabel: "00:00:14.000",
+    frameCount: 12,
+    sampleFps: 2,
+    maxConfidence: 0.97,
+    avgConfidence: 0.91,
+    embeddingStatus: "fallback",
+    embeddingModel: "histogram-fallback",
+    faceStatus: "skipped-label",
+    faceModel: "InspireFace-small",
+    closedReason: "end-of-source",
+    firstCropDataUrl: createSvgDataUrl("vehicle first", 26),
+    middleCropDataUrl: createSvgDataUrl("vehicle mid", 36),
+    lastCropDataUrl: createSvgDataUrl("vehicle last", 46),
+  },
+];
 
 const matchesSearch = (alert: AlertEvent, query?: string) => {
   if (!query?.trim()) {
@@ -249,6 +359,74 @@ export class MockVmsApiClient implements VmsApiClient {
     return siteId
       ? mockData.devices.filter((device) => device.siteId === siteId)
       : mockData.devices;
+  }
+
+  async listVisionSources(): Promise<VisionSource[]> {
+    await sleep(networkDelay());
+    return mockVisionSources;
+  }
+
+  async getVisionStatus(): Promise<VisionPipelineStatus> {
+    await sleep(networkDelay());
+    const latestJob: VisionJobStatus = {
+      id: "job-mock-1",
+      status: "completed",
+      sourceIds: mockVisionSources.map((source) => source.id),
+      sampledFps: 2,
+      trackCount: mockCropTracks.length,
+      startedAt: new Date(Date.now() - 30_000).toISOString(),
+      finishedAt: new Date(Date.now() - 5_000).toISOString(),
+      detail: null,
+    };
+    return {
+      sampleMode: true,
+      detector: {
+        available: true,
+        modelName: "mock-detector",
+        detail: "Mock pipeline status",
+      },
+      embedding: {
+        modelName: "histogram-fallback",
+      },
+      face: {
+        enabled: true,
+        modelName: "InspireFace-small",
+      },
+      latestJob,
+      storage: {
+        usedBytes: 512_000,
+        limitBytes: 10 * 1024 * 1024 * 1024,
+        artifactCount: mockCropTracks.length * 3,
+        freeBytes: 10 * 1024 * 1024 * 1024 - 512_000,
+      },
+    };
+  }
+
+  async runVisionMockJob(sourceIds?: string[]): Promise<VisionJobStatus> {
+    await sleep(networkDelay());
+    return {
+      id: `job-mock-${Date.now()}`,
+      status: "running",
+      sourceIds: sourceIds?.length ? sourceIds : mockVisionSources.map((source) => source.id),
+      sampledFps: 2,
+      trackCount: 0,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      detail: null,
+    };
+  }
+
+  async listCropTracks(filter?: CropTrackFilter): Promise<CropTrack[]> {
+    await sleep(networkDelay());
+    return mockCropTracks.filter((track) => {
+      if (filter?.sourceId && track.sourceId !== filter.sourceId) {
+        return false;
+      }
+      if (filter?.label && filter.label !== "all" && track.label !== filter.label) {
+        return false;
+      }
+      return true;
+    });
   }
 }
 

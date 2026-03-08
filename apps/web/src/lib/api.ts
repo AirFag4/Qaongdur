@@ -26,4 +26,7 @@ export const queryKeys = {
   incident: (id: string) => ["incident", id] as const,
   playback: (hash: string) => ["playback", hash] as const,
   devices: (siteId?: string) => ["devices", siteId ?? "all"] as const,
+  visionSources: ["vision-sources"] as const,
+  visionStatus: ["vision-status"] as const,
+  cropTracks: (hash: string) => ["crop-tracks", hash] as const,
 };

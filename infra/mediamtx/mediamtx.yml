@@ -50,3 +50,6 @@ pathDefaults:
   recordPartDuration: 1s
   recordSegmentDuration: 30s
   recordDeleteAfter: 7d
+
+paths:
+  all_others:

@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Qaongdur vision pipeline scaffold and demo ingestion service."
 requires-python = ">=3.11"
 dependencies = [
+  "numpy>=2.1.0",
+  "opencv-python-headless>=4.10.0",
+  "Pillow>=11.1.0",
   "fastapi>=0.115.0",
   "pydantic-settings>=2.7.0",
   "uvicorn[standard]>=0.34.0",
@@ -12,6 +15,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3.0",
+]
+models = [
+  "open-clip-torch>=2.30.0",
+  "ultralytics>=8.3.0",
 ]
 
 [project.scripts]

@@ -120,6 +120,40 @@ services:
       - "${MEDIAMTX_PLAYBACK_PORT}:9996"
       - "${MEDIAMTX_API_PORT}:9997"
 
+  recording-pruner:
+    profiles: ["core"]
+    build:
+      context: ../..
+      dockerfile: services/recording-pruner/Dockerfile
+    container_name: qaongdur-recording-pruner
+    environment:
+      RECORDINGS_DIR: /recordings
+      RECORDING_STORAGE_LIMIT_BYTES: ${RECORDING_STORAGE_LIMIT_BYTES}
+      RECORDING_PRUNE_INTERVAL_SECONDS: ${RECORDING_PRUNE_INTERVAL_SECONDS}
+    volumes:
+      - mediamtx-recordings:/recordings
+    depends_on:
+      mediamtx:
+        condition: service_started
+    restart: unless-stopped
+
+  mock-streamer:
+    profiles: ["mock-stream"]
+    build:
+      context: ../..
+      dockerfile: services/mock-streamer/Dockerfile
+    container_name: qaongdur-mock-streamer
+    environment:
+      MOCK_STREAM_TARGET_URL: rtsp://mediamtx:8554/${MOCK_STREAM_PATH:-mock-demo}
+      MOCK_STREAM_WIDTH: ${MOCK_STREAM_WIDTH:-1280}
+      MOCK_STREAM_HEIGHT: ${MOCK_STREAM_HEIGHT:-720}
+      MOCK_STREAM_FPS: ${MOCK_STREAM_FPS:-15}
+      MOCK_STREAM_BITRATE: ${MOCK_STREAM_BITRATE:-2500k}
+    depends_on:
+      mediamtx:
+        condition: service_started
+    restart: unless-stopped
+
   control-api:
     profiles: ["core"]
     build:
@@ -149,6 +183,7 @@ services:
       QAONGDUR_MEDIAMTX_PLAYBACK_INTERNAL_URL: http://mediamtx:9996
       QAONGDUR_MEDIAMTX_PLAYBACK_PUBLIC_URL: http://localhost:${MEDIAMTX_PLAYBACK_PORT}
       QAONGDUR_MEDIAMTX_RECORD_SEGMENT_DURATION_SECONDS: 30
+      QAONGDUR_VISION_SERVICE_URL: http://vision:8010
     volumes:
       - control-api-data:/data
     ports:
@@ -213,6 +248,19 @@ services:
       QAONGDUR_VISION_SERVICE_PORT: 8010
       QAONGDUR_VISION_SAMPLE_MODE: "true"
       QAONGDUR_VISION_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET}
+      QAONGDUR_VISION_DEFAULT_SITE_ID: site-local-01
+      QAONGDUR_VISION_MOCK_VIDEO_DIR: /mock-videos
+      QAONGDUR_VISION_DATA_DIR: /data
+      QAONGDUR_VISION_DATABASE_PATH: /data/vision.sqlite3
+      QAONGDUR_VISION_ARTIFACTS_DIR: /data/artifacts
+      QAONGDUR_VISION_SAMPLE_FPS: ${VISION_SAMPLE_FPS}
+      QAONGDUR_VISION_STORAGE_LIMIT_BYTES: ${VISION_STORAGE_LIMIT_BYTES}
+      QAONGDUR_VISION_EMBEDDING_ENABLED: ${VISION_EMBEDDING_ENABLED}
+      QAONGDUR_VISION_FACE_ENABLED: ${VISION_FACE_ENABLED}
+      QAONGDUR_VISION_FACE_MIN_TRACK_SECONDS: ${VISION_FACE_MIN_TRACK_SECONDS}
+    volumes:
+      - ../../../Video:/mock-videos:ro
+      - vision-data:/data
     ports:
       - "${VISION_PORT}:8010"
     depends_on:
@@ -240,3 +288,4 @@ volumes:
   object-storage-data:
   mediamtx-recordings:
   control-api-data:
+  vision-data:

@@ -1,7 +1,7 @@
 # Qaongdur Monorepo
 
 Docker-first VMS + Vision AI + Agent AI project.  
-The repo now includes the initial monorepo structure, the first frontend web console, Keycloak-based auth foundations, and the first real backend slice for RTSP camera onboarding, live HLS, and playback search through MediaMTX.
+The repo now includes the initial monorepo structure, the first frontend web console, Keycloak-based auth foundations, the first real backend slice for RTSP camera onboarding, live HLS, and playback search through MediaMTX, and the first mock-video vision-processing path for tracked crop extraction.
 
 ## Quick Start
 
@@ -33,7 +33,38 @@ Current behavior in this mode:
 - camera inventory, device inventory, live tiles, overview metrics, RTSP onboarding, and playback search use the real `control-api`
 - site-admin and platform-admin users can reconnect or remove cameras from the Devices page
 - MediaMTX records rolling segments and serves playback URLs for finalized recordings
+- the local recording volume is pruned oldest-first to stay within the configured `RECORDING_STORAGE_LIMIT_BYTES` budget, default `10 GB`
 - alerts and incidents are still placeholder backend responses rather than a full detection-to-incident pipeline
+
+Mock-video vision pipeline:
+
+```bash
+cp .env.example .env
+make vision-up
+```
+
+Current behavior in this mode:
+
+- `services/vision` mounts the local sibling `../Video` directory into the container as `/mock-videos`
+- source discovery currently reads `people-walking.mp4` and `vehicles.mp4`
+- the detector keeps only `person` and `vehicle`
+- tracks are sampled at `1-3 fps` per source, default `2 fps`
+- the new `/crops` page shows fixed-aspect first, main, and last crops for each completed track
+- embeddings are computed from object crops only
+- the face stage only attempts one embedding per person track after the minimum dwell window, and reports `unavailable` cleanly when the local InspireFace runtime is not packaged
+- VLM is skipped in this slice
+
+Optional mock RTSP publisher for local testing:
+
+```bash
+make mock-stream-up
+```
+
+Then add this camera source from the Devices page:
+
+- `rtsp://mediamtx:8554/mock-demo`
+
+You can change the mock path and video settings in the repo root `.env` with `MOCK_STREAM_*` variables.
 
 Login path in this mode:
 
@@ -58,6 +89,7 @@ Validation:
 pnpm --filter @qaongdur/web lint
 pnpm --filter @qaongdur/web build
 python3 -m compileall services/control-api/src services/vision/src
+docker compose --env-file .env.example -f infra/docker/compose.core.yml --profile core --profile vision-cpu config
 ```
 
 ## Detailed Change Log
@@ -149,6 +181,27 @@ Started the next backend and delivery milestone:
 - MediaMTX config under `infra/mediamtx/mediamtx.yml`
 - `make docker-up`, `docker-down`, `logs`, `seed`, and `vision-up`
 
+### 8. Mock Video Vision Slice
+
+Implemented the first real Task 03 vision-processing path:
+
+- `services/vision` discovers local mock videos from the sibling `Video/` folder
+- Ultralytics detection keeps only `person` and `vehicle`
+- an internal IoU tracker emits track-level first, middle, and last crop states
+- crop artifacts and track metadata are persisted in a local SQLite-backed store under the `vision-data` volume
+- object embeddings are computed from crop images only, with a deterministic fallback when MobileCLIP2 weights are unavailable
+- face embedding is gated to person tracks that survive long enough and is attempted only once per track
+- a new `/crops` page in the web console exposes the stored track cards and vision runtime status
+
+Current limitations of this slice:
+
+- mock-video analytics still reads the sibling `Video/` files directly inside `services/vision`; it is not yet analyzing the same RTSP path that MediaMTX records and serves for VMS playback
+- crop embeddings are persisted in SQLite tables shaped for a later Postgres plus `pgvector` migration, not a full vector index yet
+- ROI filtering is only designed at the schema level for now
+- the face stage remains `unavailable` unless InspireFace is installed with its native Linux runtime library bundle; cloning the upstream repo alone is not sufficient
+- the current face code still needs a recognition-oriented runtime path using the `Megatron` resource pack instead of the earlier placeholder `Pikachu` initialization
+- live RTSP inference is still separate from the file-backed mock-video pipeline
+
 ## For Developers
 
 ### Current Frontend Boundaries
@@ -184,6 +237,7 @@ What `03 + core 05` means in practice:
 - move playback segment indexing and retention metadata into Postgres instead of relying only on MediaMTX playback listing
 - model cameras, devices, sites, and recording metadata as relational entities so inventory, health, and playback can evolve without file-based coordination
 - keep MediaMTX as the relay and playback edge, but remove JSON-file state from `control-api` once database-backed persistence is ready
+- migrate the current SQLite-backed track and embedding store into Postgres plus `pgvector` once the wider Task 03 schema is ready
 
 ### Planned NVR Direction
 

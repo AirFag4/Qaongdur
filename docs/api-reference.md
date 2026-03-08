@@ -27,7 +27,7 @@ This document covers three layers:
 | Mock realtime transport | `packages/api-client/src/mock-event-socket.ts` | Mock websocket-like event feed | Implemented |
 | Frontend API bootstrap | `apps/web/src/lib/api.ts` | Instantiates the client/socket and defines React Query keys | Implemented |
 | Control plane backend | `services/control-api` | FastAPI service with Keycloak token validation, camera onboarding, live/playback/device endpoints, auth endpoints, approval examples, and audit logging hooks | Partial |
-| Vision pipeline | `services/vision` | Demo-ready vision scaffold with health endpoints and seeded pipeline responses | Partial |
+| Vision pipeline | `services/vision` | Mock-video vision pipeline with tracked crop persistence, embeddings, and runtime status endpoints | Partial |
 | Agent backend | `services/agent` | In-app assistant sessions, tool calls, approvals, audit trails | Planned |
 
 ## Current TypeScript API Surface
@@ -70,6 +70,10 @@ The frontend only talks to the data layer through this interface:
 | `getIncidentById(id)` | incident id | `Promise<Incident \| undefined>` | finds one incident in mock storage | incident detail page |
 | `searchPlayback(params)` | `PlaybackSearchParams` | `Promise<PlaybackSegment[]>` | returns MediaMTX recording spans in backend mode and generated 15-minute buckets in mock mode | playback page |
 | `listDevices(siteId?)` | optional `siteId` | `Promise<Device[]>` | returns all devices or a site-scoped subset | devices page |
+| `listVisionSources()` | none | `Promise<VisionSource[]>` | returns discovered mock-video sources from `services/vision` | crop gallery page |
+| `getVisionStatus()` | none | `Promise<VisionPipelineStatus>` | returns detector, embedding, face, job, and storage status | crop gallery page |
+| `runVisionMockJob(sourceIds?)` | optional source ids | `Promise<VisionJobStatus>` | starts a background mock-video processing job | crop gallery page |
+| `listCropTracks(filter?)` | `CropTrackFilter` | `Promise<CropTrack[]>` | returns stored first, middle, and last crop states per track | crop gallery page |
 
 ### `RealtimeEventSocket`
 
@@ -247,6 +251,75 @@ All of the following types live in `packages/types/src/index.ts`.
 - `from: string`
 - `to: string`
 - `includeAlerts: boolean`
+
+### `VisionSource`
+
+- `id: string`
+- `siteId: string`
+- `cameraId: string`
+- `cameraName: string`
+- `filePath: string`
+- `durationSec: number`
+- `frameWidth: number`
+- `frameHeight: number`
+- `sourceFps: number`
+- `trackCount: number`
+
+### `VisionPipelineStatus`
+
+- `sampleMode: boolean`
+- `detector: { available: boolean; modelName: string; detail: string }`
+- `embedding: { modelName: string }`
+- `face: { enabled: boolean; modelName: string }`
+- `latestJob?: VisionJobStatus | null`
+- `storage: VisionStorageStatus`
+
+### `VisionJobStatus`
+
+- `id: string`
+- `status: "running" | "completed" | "failed"`
+- `sourceIds: string[]`
+- `sampledFps: number`
+- `trackCount: number`
+- `startedAt: string`
+- `finishedAt?: string | null`
+- `detail?: string | null`
+
+### `CropTrackFilter`
+
+- `sourceId?: string`
+- `label?: "person" | "vehicle" | "all"`
+
+### `CropTrack`
+
+- `id: string`
+- `sourceId: string`
+- `siteId: string`
+- `cameraId: string`
+- `cameraName: string`
+- `label: "person" | "vehicle"`
+- `detectorLabel: string`
+- `firstSeenAt: string`
+- `middleSeenAt: string`
+- `lastSeenAt: string`
+- `firstSeenOffsetMs: number`
+- `middleSeenOffsetMs: number`
+- `lastSeenOffsetMs: number`
+- `firstSeenOffsetLabel: string`
+- `middleSeenOffsetLabel: string`
+- `lastSeenOffsetLabel: string`
+- `frameCount: number`
+- `sampleFps: number`
+- `maxConfidence: number`
+- `avgConfidence: number`
+- `embeddingStatus: string`
+- `embeddingModel?: string | null`
+- `faceStatus: string`
+- `faceModel?: string | null`
+- `closedReason: string`
+- `firstCropDataUrl: string`
+- `middleCropDataUrl: string`
+- `lastCropDataUrl: string`
 
 ### Realtime event types
 

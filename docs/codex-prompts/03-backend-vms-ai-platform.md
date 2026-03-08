@@ -186,3 +186,6 @@ After the first RTSP onboarding and MediaMTX slice is in place, the next backend
 - make RTSP transport selectable per camera instead of hard-coding relay sessions to `tcp`
 - expose stream probe and failure diagnostics so the UI can show why a camera is not ready
 - add stall detection and controlled auto-reconnect for streams that freeze after initial success
+- migrate the current mock-video track store and embedding tables from SQLite into Postgres plus `pgvector`
+- turn the current ROI schema design into persisted polygon editing and track-intersection filtering
+- replace the temporary IoU tracker with a stronger reusable tracking package once the local dependency is available in the workspace

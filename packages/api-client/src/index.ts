@@ -72,6 +72,22 @@ export const createApiClient = (config?: HttpApiClientConfig): VmsApiClient => {
         () => httpClient.listDevices(siteId),
         () => mockApiClient.listDevices(siteId),
       )(),
+    listVisionSources: () =>
+      withFallback(
+        () => httpClient.listVisionSources(),
+        () => mockApiClient.listVisionSources(),
+      )(),
+    getVisionStatus: () =>
+      withFallback(
+        () => httpClient.getVisionStatus(),
+        () => mockApiClient.getVisionStatus(),
+      )(),
+    runVisionMockJob: (sourceIds) => httpClient.runVisionMockJob(sourceIds),
+    listCropTracks: (filter) =>
+      withFallback(
+        () => httpClient.listCropTracks(filter),
+        () => mockApiClient.listCropTracks(filter),
+      )(),
   };
 };
 

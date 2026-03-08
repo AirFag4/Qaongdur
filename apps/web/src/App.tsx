@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { LoadingState } from "@qaongdur/ui";
 import { OperatorLayout } from "./app/operator-layout";
 import { AlertsEventsPage } from "./pages/alerts-events-page";
+import { CropGalleryPage } from "./pages/crop-gallery-page";
 import { DevicesPage } from "./pages/devices-page";
 import { IncidentDetailPage } from "./pages/incident-detail-page";
 import { LiveMonitoringPage } from "./pages/live-monitoring-page";
@@ -34,6 +35,7 @@ function App() {
         <Route path="incidents" element={<IncidentDetailPage />} />
         <Route path="incidents/:incidentId" element={<IncidentDetailPage />} />
         <Route path="playback" element={<PlaybackSearchPage />} />
+        <Route path="crops" element={<CropGalleryPage />} />
         <Route path="devices" element={<DevicesPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

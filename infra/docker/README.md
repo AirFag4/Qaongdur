@@ -23,6 +23,7 @@ make docker-down
 make logs
 make seed
 make vision-up
+make mock-stream-up
 ```
 
 Notes:
@@ -43,8 +44,10 @@ Notes:
 - `object-storage`
 - `object-storage-bootstrap`
 - `mediamtx`
+- `recording-pruner`
 
-The `vision` service is scaffolded and available under the `vision-cpu` profile via `make vision-up`.
+The `vision` service is available under the `vision-cpu` profile via `make vision-up`.
+The `mock-streamer` service is available under the `mock-stream` profile via `make mock-stream-up`.
 
 ## Current Media Slice
 
@@ -58,6 +61,54 @@ The `core` stack now supports a real RTSP media path:
 - stored cameras are rehydrated into MediaMTX after a media-relay restart
 
 MediaMTX records short rolling segments in local development so playback becomes available quickly after ingest starts.
+The `recording-pruner` sidecar keeps the `mediamtx-recordings` volume within `RECORDING_STORAGE_LIMIT_BYTES`, default `10 GB`, by deleting the oldest segments first.
+
+## Mock Video Vision
+
+The `vision-cpu` profile mounts the sibling `Video/` directory into the `vision` container and persists metadata plus crop artifacts in the `vision-data` volume.
+
+Start it with:
+
+```bash
+cp .env.example .env
+make vision-up
+```
+
+Current behavior:
+
+- discovers local `.mp4` sources from `../Video`
+- samples frames at `VISION_SAMPLE_FPS`, constrained to `1-3 fps`
+- detects only `person` and `vehicle`
+- stores first, middle, and last crop JPEGs for each closed track
+- enforces a `VISION_STORAGE_LIMIT_BYTES` artifact budget, default `10 GB`
+- skips VLM
+- exposes status and crop-track endpoints through `control-api`
+
+## Mock Streamer
+
+For local testing without a physical camera:
+
+```bash
+cp .env.example .env
+make docker-up
+make mock-stream-up
+```
+
+The mock streamer publishes a looping synthetic test pattern into the main `mediamtx` service.
+
+Default onboarding URL:
+
+- `rtsp://mediamtx:8554/mock-demo`
+
+Configurable `.env` keys:
+
+- `MOCK_STREAM_PATH`
+- `MOCK_STREAM_WIDTH`
+- `MOCK_STREAM_HEIGHT`
+- `MOCK_STREAM_FPS`
+- `MOCK_STREAM_BITRATE`
+
+If you change `MOCK_STREAM_PATH`, use the matching RTSP URL when adding the camera.
 
 ## RTSP Troubleshooting
 

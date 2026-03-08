@@ -23,6 +23,7 @@ const navItems: AppNavItem[] = [
   { id: "incidents", label: "Incident", path: "/incidents", shortcut: "Alt+4" },
   { id: "playback", label: "Playback", path: "/playback", shortcut: "Alt+5" },
   { id: "devices", label: "Devices", path: "/devices", shortcut: "Alt+6" },
+  { id: "crops", label: "Crops", path: "/crops", shortcut: "Alt+7" },
 ];
 
 const isEditableTarget = (target: EventTarget | null) => {

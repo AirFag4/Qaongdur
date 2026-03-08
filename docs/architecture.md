@@ -9,7 +9,7 @@ This monorepo is organized around a single product surface (video operations con
 - `packages/api-client`: Typed adapters that hide data sources (mock now, backend later).
 - `packages/ui`: Shared UI primitives and domain components reused by pages.
 - `services/control-api`: FastAPI control plane service with auth validation, a currently file-backed RTSP camera inventory, MediaMTX path reconciliation, playback search, approval examples, and room for the rest of the VMS APIs.
-- `services/vision`: FastAPI vision scaffold with demo pipeline endpoints and room for full ingest + model inference workflows.
+- `services/vision`: FastAPI vision service with mock-video ingest, tracked crop persistence, and room for live-stream inference workflows.
 - `services/agent`: Planned in-app agent orchestration and tool-calling.
 - `infra/docker`, `infra/keycloak`, `infra/mediamtx`: Infrastructure setup areas.
 
@@ -45,10 +45,35 @@ Current implemented slice:
 - `control-api` persists camera definitions, supports reconnect and remove actions, and rehydrates missing MediaMTX paths after a relay restart
 - MediaMTX serves live HLS and playback URLs for recorded spans
 - the web console can add RTSP cameras, view live video, and search playback against this local media path
+- the `vision-cpu` profile processes sibling mock videos, stores first/middle/last track crops, and exposes a crop gallery through `control-api`
 
 Current known limitation:
 
 - the relay path is configured with RTSP transport forced to `tcp`, so some cameras may need per-camera transport selection or a different vendor RTSP path before they remain stable
+- vision embeddings are persisted in SQLite tables for now and need a future Postgres plus `pgvector` migration before they become a real vector-search backend
+
+## Task 03 Vision Data Shape
+
+The current Task 03 slice uses file-backed mock videos and stores track artifacts plus metadata locally:
+
+- `video_source`
+- `processing_job`
+- `track`
+- `storage_artifact`
+- `track_embedding`
+- `track_face_embedding`
+
+This is intentionally shaped so the same entities can migrate into Postgres later without changing the frontend contract.
+
+Future ROI support should stay normalized rather than embedding polygons directly into track rows. The planned direction is:
+
+- `roi_zone`
+- `roi_zone_vertex`
+- `roi_rule`
+- `roi_rule_label_filter`
+- `track_roi_intersection`
+
+That will allow per-camera polygon drawing and later filtering for enter, exit, intersect, or dwell logic without rewriting the crop-gallery or detection APIs.
 
 ## Storage Direction
 
@@ -56,3 +81,4 @@ Current known limitation:
 - The default self-hosted object-storage implementation remains MinIO for local development and first public releases.
 - RustFS can be used as the object-storage backend for a local Qaongdur NVR deployment because the storage role is S3-compatible blobs for segments, clips, thumbnails, and exports.
 - Do not treat RustFS as the NVR itself. Qaongdur still needs recording, retention, playback indexing, and clip-export logic above the object store.
+- In the current local stack, MediaMTX still owns segment recording while a small `recording-pruner` sidecar enforces the test storage budget by deleting the oldest segments once the shared recordings volume exceeds `10 GB`.
