@@ -20,7 +20,7 @@ cp .env.example .env
 make vision-up
 ```
 
-The container path is the recommended way to run the full mock-video slice because it pins CPU-only PyTorch for this profile.
+The container path is the recommended way to run the full mock-video slice because it pins CPU-only PyTorch for this profile and starts the paired `mock-streamer` plus `face-api` services.
 
 ## Current Endpoints
 
@@ -36,20 +36,23 @@ The container path is the recommended way to run the full mock-video slice becau
 ## Current Mock-Video Flow
 
 - input files come from the sibling `Video/` directory mounted at `/mock-videos` in Compose
+- `control-api` and `mock-streamer` turn those files into system-managed RTSP cameras under MediaMTX, for example `rtsp://mediamtx:8554/mock-video-people-walking`
+- `services/vision` reads the MediaMTX relay URL for each mock source instead of processing the file path directly
+- each job is bounded to one original file-duration window even though the publisher loops forever
 - the detector keeps only `person` and `vehicle`
 - tracks are sampled at `1-3 fps`, default `2 fps`
 - each closed track stores first, middle, and last crop images
 - embeddings are computed from crop images only
-- face extraction is attempted once per qualifying person track
+- face extraction is attempted once per qualifying person track through the separate `face-api` sidecar
 - metadata and embeddings are currently persisted in SQLite inside `/data/vision.sqlite3`
 - crop artifacts are stored under `/data/artifacts` and pruned against `VISION_STORAGE_LIMIT_BYTES`, default `10 GB`
 
 ## Current Limitations
 
-- the current mock-video pipeline still analyzes local files directly rather than consuming the same RTSP relay path that MediaMTX uses for live view and recording
 - MobileCLIP2 uses a deterministic histogram fallback when the requested runtime weights are unavailable
-- the face stage reports `unavailable` when the local InspireFace runtime is not packaged with native assets; the checked-out repo needs a built `libInspireFace.so` bundle before it can run on Linux x64
-- the current face hook still needs to switch to a recognition-oriented `Megatron` runtime path
+- the first `face-api` start compiles InspireFace from the local sibling `../InspireFace` checkout, so the face stage can report `service-unreachable` or `service-not-ready` until that build completes
+- the current face path depends on the host having the `../InspireFace` checkout available for the sidecar volume mount
+- the job processes the current point in each looping relay, not a hard reset to the exact beginning of the source file
 - VLM is skipped
 - the embedding store is not a full vector index yet; it is shaped for a later Postgres plus `pgvector` migration
 - ROI filtering is a future schema feature, not part of the current processing loop

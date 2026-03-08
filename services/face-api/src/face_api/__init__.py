@@ -1,0 +1,1 @@
+"""Qaongdur face embedding sidecar."""

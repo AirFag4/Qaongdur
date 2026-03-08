@@ -39,6 +39,8 @@ pnpm --filter @qaongdur/web dev
 - control-api auth validation is live
 - with a configured backend, camera inventory, live tiles, overview, playback search, and devices come from `control-api`
 - camera create, reconnect, and remove actions go directly to `control-api`
+- when `make vision-up` is running, the Crop Gallery reads VMS-backed mock-video sources, jobs, and track cards through `control-api`
+- system-managed mock-video cameras from the sibling `../Video` directory appear in the Devices page and cannot be removed from the UI while the mock-video stack is enabled
 - alerts and incidents still return placeholder backend responses while the full detection and incident pipeline is being built
 - the Devices page exposes reconnect and remove actions only for `site-admin` and `platform-admin`
 

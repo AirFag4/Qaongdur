@@ -166,6 +166,9 @@ export function DevicesPage() {
           if (row.original.type !== "camera" || !cameraId) {
             return <span className="text-[11px] text-stone-600">-</span>;
           }
+          if (row.original.tags.includes("system-managed")) {
+            return <span className="text-[11px] text-stone-500">System managed</span>;
+          }
 
           const reconnectPending =
             reconnectCamera.isPending &&

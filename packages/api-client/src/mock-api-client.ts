@@ -34,11 +34,14 @@ const createSvgDataUrl = (label: string, hue: number) =>
 
 const mockVisionSources: VisionSource[] = [
   {
-    id: "source-people-walking",
+    id: "source-mock-video-people-walking",
     siteId: "site-local-01",
-    cameraId: "cam-people-walking",
+    cameraId: "cam-mock-video-people-walking",
     cameraName: "People Walking",
     filePath: "/mock-videos/people-walking.mp4",
+    pathName: "mock-video-people-walking",
+    streamUrl: "rtsp://mediamtx:8554/mock-video-people-walking",
+    captureMode: "rtsp-relay",
     durationSec: 44,
     frameWidth: 1280,
     frameHeight: 720,
@@ -46,11 +49,14 @@ const mockVisionSources: VisionSource[] = [
     trackCount: 2,
   },
   {
-    id: "source-vehicles",
+    id: "source-mock-video-vehicles",
     siteId: "site-local-01",
-    cameraId: "cam-vehicles",
+    cameraId: "cam-mock-video-vehicles",
     cameraName: "Vehicles",
     filePath: "/mock-videos/vehicles.mp4",
+    pathName: "mock-video-vehicles",
+    streamUrl: "rtsp://mediamtx:8554/mock-video-vehicles",
+    captureMode: "rtsp-relay",
     durationSec: 35,
     frameWidth: 1280,
     frameHeight: 720,
@@ -62,9 +68,9 @@ const mockVisionSources: VisionSource[] = [
 const mockCropTracks: CropTrack[] = [
   {
     id: "trk-mock-person-1",
-    sourceId: "source-people-walking",
+    sourceId: "source-mock-video-people-walking",
     siteId: "site-local-01",
-    cameraId: "cam-people-walking",
+    cameraId: "cam-mock-video-people-walking",
     cameraName: "People Walking",
     label: "person",
     detectorLabel: "person",
@@ -92,9 +98,9 @@ const mockCropTracks: CropTrack[] = [
   },
   {
     id: "trk-mock-vehicle-1",
-    sourceId: "source-vehicles",
+    sourceId: "source-mock-video-vehicles",
     siteId: "site-local-01",
-    cameraId: "cam-vehicles",
+    cameraId: "cam-mock-video-vehicles",
     cameraName: "Vehicles",
     label: "vehicle",
     detectorLabel: "car",
@@ -184,6 +190,7 @@ export class MockVmsApiClient implements VmsApiClient {
       lastHeartbeatAt: camera.lastSeenAt,
       uptimePct: 0,
       packetLossPct: 0,
+      tags: ["rtsp", "mock"],
     });
 
     return camera;
@@ -389,8 +396,11 @@ export class MockVmsApiClient implements VmsApiClient {
         modelName: "histogram-fallback",
       },
       face: {
+        available: false,
         enabled: true,
+        mode: "remote",
         modelName: "InspireFace-small",
+        detail: "Face service is not enabled in mock mode.",
       },
       latestJob,
       storage: {

@@ -9,7 +9,8 @@ This monorepo is organized around a single product surface (video operations con
 - `packages/api-client`: Typed adapters that hide data sources (mock now, backend later).
 - `packages/ui`: Shared UI primitives and domain components reused by pages.
 - `services/control-api`: FastAPI control plane service with auth validation, a currently file-backed RTSP camera inventory, MediaMTX path reconciliation, playback search, approval examples, and room for the rest of the VMS APIs.
-- `services/vision`: FastAPI vision service with mock-video ingest, tracked crop persistence, and room for live-stream inference workflows.
+- `services/vision`: FastAPI vision service that consumes MediaMTX-backed mock-video relay sources, persists tracked crop artifacts, and leaves room for broader live-stream inference workflows.
+- `services/face-api`: FastAPI sidecar that bootstraps InspireFace from the local sibling checkout and serves crop-level face embeddings to `services/vision`.
 - `services/agent`: Planned in-app agent orchestration and tool-calling.
 - `infra/docker`, `infra/keycloak`, `infra/mediamtx`: Infrastructure setup areas.
 
@@ -45,12 +46,15 @@ Current implemented slice:
 - `control-api` persists camera definitions, supports reconnect and remove actions, and rehydrates missing MediaMTX paths after a relay restart
 - MediaMTX serves live HLS and playback URLs for recorded spans
 - the web console can add RTSP cameras, view live video, and search playback against this local media path
-- the `vision-cpu` profile processes sibling mock videos, stores first/middle/last track crops, and exposes a crop gallery through `control-api`
+- the `mock-streamer` service loops sibling mock videos into MediaMTX as system-managed RTSP cameras
+- the `vision-cpu` profile processes those relay sources, stores first/middle/last track crops, and exposes a crop gallery through `control-api`
+- the optional `face-api` sidecar uses the local `InspireFace` checkout and the `Megatron` resource pack for person-track face embeddings
 
 Current known limitation:
 
 - the relay path is configured with RTSP transport forced to `tcp`, so some cameras may need per-camera transport selection or a different vendor RTSP path before they remain stable
 - vision embeddings are persisted in SQLite tables for now and need a future Postgres plus `pgvector` migration before they become a real vector-search backend
+- the first `face-api` startup compiles InspireFace from source, so face status can remain unavailable for several minutes on a cold boot
 
 ## Task 03 Vision Data Shape
 

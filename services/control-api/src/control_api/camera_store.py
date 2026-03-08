@@ -20,6 +20,10 @@ class CameraRecord:
     rtsp_url: str
     path_name: str
     created_at: str
+    ingest_mode: str = "pull"
+    system_managed: bool = False
+    source_kind: str = "rtsp"
+    source_ref: str | None = None
 
 
 class CameraStore:
@@ -54,6 +58,10 @@ class CameraStore:
             rtsp_url=rtsp_url.strip(),
             path_name=camera_id,
             created_at=datetime.now(tz=UTC).isoformat(),
+            ingest_mode="pull",
+            system_managed=False,
+            source_kind="rtsp",
+            source_ref=None,
         )
 
     def save_camera(self, camera: CameraRecord) -> None:
@@ -83,6 +91,52 @@ class CameraStore:
             payload["cameras"] = retained
             self._write_payload(payload)
             return deleted
+
+    def sync_system_cameras(
+        self,
+        *,
+        source_kind: str,
+        cameras: list[CameraRecord],
+    ) -> None:
+        with self._lock:
+            payload = self._read_payload()
+            existing_items = payload.setdefault("cameras", [])
+            existing_by_id = {item.get("id"): item for item in existing_items}
+            retained = [
+                item
+                for item in existing_items
+                if not (
+                    item.get("system_managed") is True
+                    and item.get("source_kind") == source_kind
+                )
+            ]
+
+            for camera in cameras:
+                existing = existing_by_id.get(camera.id)
+                retained.append(
+                    asdict(
+                        CameraRecord(
+                            id=camera.id,
+                            site_id=camera.site_id,
+                            name=camera.name,
+                            zone=camera.zone,
+                            rtsp_url=camera.rtsp_url,
+                            path_name=camera.path_name,
+                            created_at=(
+                                str(existing.get("created_at"))
+                                if existing and existing.get("created_at")
+                                else camera.created_at
+                            ),
+                            ingest_mode=camera.ingest_mode,
+                            system_managed=camera.system_managed,
+                            source_kind=camera.source_kind,
+                            source_ref=camera.source_ref,
+                        )
+                    )
+                )
+
+            payload["cameras"] = retained
+            self._write_payload(payload)
 
     def _read_payload(self) -> dict[str, object]:
         if not self._path.exists():

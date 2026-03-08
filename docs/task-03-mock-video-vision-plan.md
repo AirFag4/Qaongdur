@@ -22,7 +22,7 @@ The environment is not ready for every requested dependency to be fully real on 
 
 - `services/vision` is currently only a demo scaffold
 - `/Users/home/Desktop/AI_modelling_dev/AirFag4/supervision` is only a bare git checkout and does not contain usable package code
-- `/Users/home/Desktop/AI_modelling_dev/AirFag4/InspireFace/python` contains Python wrappers, but the expected native runtime libraries and packaged models are not present in the checked-out tree
+- `/Users/home/Desktop/AI_modelling_dev/AirFag4/InspireFace/python` contains Python wrappers, but the expected native runtime libraries are still not packaged in a way that `services/vision` can import directly
 - no local MobileCLIP2 repo or weights are vendored beside the workspace
 
 Because of that, this implementation will prioritize:
@@ -178,12 +178,14 @@ VLM:
 
 ### Processing mode
 
-This slice is file-backed, not live-stream-backed.
+This slice should behave like a VMS-backed mock-camera flow.
 
 That means:
 
-- mock videos are the primary input
-- the pipeline can be rerun deterministically
+- mock videos are the primary authoring source
+- `mock-streamer` loops those files into MediaMTX as RTSP mock cameras
+- `services/vision` consumes the MediaMTX relay URL rather than opening the file path directly
+- each processing run is bounded to one source-duration window even though the publisher loops forever
 - the crop page is driven by stored outputs, not by websocket-only transient events
 
 ### Frame rate
@@ -230,14 +232,23 @@ Detector-native labels like `car`, `truck`, `bus`, and `motorcycle` are normaliz
 Completed in the current slice:
 
 - local mock-video discovery from the sibling `Video/` directory
+- system-managed mock cameras exposed through `control-api` from that same `Video/` directory
+- looping RTSP publication of those files into MediaMTX with a stable `mock-video-*` path naming scheme
 - detector contract narrowed to `person` and `vehicle`
 - sampled processing constrained to `1-3 fps`, default `2 fps`
 - internal IoU tracker with closed-track first, middle, and last crop outputs
 - crop-only embedding stage with runtime fallback when MobileCLIP2 weights are unavailable
 - face stage gated to person tracks, minimum dwell time, and one embedding attempt per track
+- separate `face-api` sidecar that bootstraps InspireFace from the local sibling `InspireFace/` checkout and targets the `Megatron` resource pack
 - SQLite-backed metadata store for sources, jobs, tracks, crop assets, and embeddings
 - quota-managed crop artifact storage with a `10 GB` default budget
 - `control-api` proxy endpoints for sources, job execution, status, and crop-track reads
+
+Current limitations after implementation:
+
+- the first `face-api` startup compiles InspireFace from source and can take several minutes before the face stage becomes reachable
+- the sidecar depends on the host having the sibling `../InspireFace` checkout available for the Compose bind mount
+- each job processes the current point in the looping RTSP source rather than resetting the publisher to the exact first frame
 - `/crops` page with fixed-aspect track cards and runtime status
 - Compose wiring for `vision-cpu` with persistent `vision-data`
 - local recording-pruner sidecar for the MediaMTX recordings volume with a `10 GB` default budget
@@ -247,6 +258,6 @@ Current implementation gaps relative to the long-term design:
 - embeddings are stored in SQLite tables, not a true vector-search index yet
 - ROI filtering is still design-only
 - the tracker is an internal IoU implementation because the local `supervision` checkout is not usable as a package in this workspace
-- the face stage reports `unavailable` unless InspireFace native runtime assets are added locally; the upstream repo checkout does not currently include the built Linux x64 `libInspireFace.so` bundle expected by the Python wrapper
-- the current mock-video pipeline still reads files directly rather than running analytics on the same MediaMTX relay and recording path used by the VMS flow
+- the first `face-api` startup is expensive because it compiles InspireFace from source at runtime instead of consuming a prebuilt packaged runtime
+- the current face path depends on the sibling `../InspireFace` checkout being present on the host for the Compose bind mount
 - VLM remains intentionally skipped

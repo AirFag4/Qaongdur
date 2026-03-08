@@ -138,17 +138,22 @@ services:
     restart: unless-stopped
 
   mock-streamer:
-    profiles: ["mock-stream"]
+    profiles: ["mock-video", "mock-stream"]
     build:
       context: ../..
       dockerfile: services/mock-streamer/Dockerfile
     container_name: qaongdur-mock-streamer
     environment:
-      MOCK_STREAM_TARGET_URL: rtsp://mediamtx:8554/${MOCK_STREAM_PATH:-mock-demo}
+      MOCK_STREAM_TARGET_BASE_URL: rtsp://mediamtx:8554
+      MOCK_STREAM_VIDEO_DIR: /mock-videos
+      MOCK_STREAM_PATH_PREFIX: ${MOCK_VIDEO_PATH_PREFIX}
+      MOCK_STREAM_SYNTHETIC_PATH: ${MOCK_STREAM_PATH:-mock-demo}
       MOCK_STREAM_WIDTH: ${MOCK_STREAM_WIDTH:-1280}
       MOCK_STREAM_HEIGHT: ${MOCK_STREAM_HEIGHT:-720}
       MOCK_STREAM_FPS: ${MOCK_STREAM_FPS:-15}
       MOCK_STREAM_BITRATE: ${MOCK_STREAM_BITRATE:-2500k}
+    volumes:
+      - ../../../Video:/mock-videos:ro
     depends_on:
       mediamtx:
         condition: service_started
@@ -176,6 +181,10 @@ services:
       QAONGDUR_DEFAULT_SITE_CODE: LOCAL-01
       QAONGDUR_DEFAULT_SITE_NAME: Local Camera Lab
       QAONGDUR_DEFAULT_SITE_REGION: Local
+      QAONGDUR_MOCK_VIDEO_DIR: /mock-videos
+      QAONGDUR_MOCK_VIDEO_PATH_PREFIX: ${MOCK_VIDEO_PATH_PREFIX}
+      QAONGDUR_MOCK_VIDEO_ZONE: Mock Video Lab
+      QAONGDUR_MOCK_VIDEO_RTSP_BASE_URL: rtsp://mediamtx:8554
       QAONGDUR_MEDIAMTX_API_URL: http://mediamtx:9997
       QAONGDUR_MEDIAMTX_API_USER: qaongdur-api
       QAONGDUR_MEDIAMTX_API_PASSWORD: qaongdur-api
@@ -186,6 +195,7 @@ services:
       QAONGDUR_VISION_SERVICE_URL: http://vision:8010
     volumes:
       - control-api-data:/data
+      - ../../../Video:/mock-videos:ro
     ports:
       - "${CONTROL_API_PORT}:8000"
     depends_on:
@@ -204,6 +214,36 @@ services:
         [
           "CMD-SHELL",
           "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz').read()\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  face-api:
+    profiles: ["face", "vision-cpu"]
+    build:
+      context: ../..
+      dockerfile: services/face-api/Dockerfile
+    container_name: qaongdur-face-api
+    environment:
+      QAONGDUR_FACE_ENV: production
+      QAONGDUR_FACE_SERVICE_HOST: 0.0.0.0
+      QAONGDUR_FACE_SERVICE_PORT: 8020
+      QAONGDUR_FACE_RUNTIME_DIR: /runtime
+      QAONGDUR_FACE_BOOTSTRAP_ERROR_FILE: /runtime/bootstrap-error.txt
+      QAONGDUR_FACE_INSPIREFACE_REPO: /mnt/inspireface
+      QAONGDUR_FACE_RESOURCE_PATH: /mnt/inspireface/test_res/pack/Megatron
+      QAONGDUR_FACE_MODEL_NAME: Megatron
+    volumes:
+      - ../../../InspireFace:/mnt/inspireface:ro
+      - face-runtime:/runtime
+    ports:
+      - "${FACE_API_PORT}:8020"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/healthz').read()\"",
         ]
       interval: 15s
       timeout: 5s
@@ -250,6 +290,9 @@ services:
       QAONGDUR_VISION_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET}
       QAONGDUR_VISION_DEFAULT_SITE_ID: site-local-01
       QAONGDUR_VISION_MOCK_VIDEO_DIR: /mock-videos
+      QAONGDUR_VISION_MOCK_VIDEO_RTSP_BASE_URL: rtsp://mediamtx:8554
+      QAONGDUR_VISION_MOCK_VIDEO_PATH_PREFIX: ${MOCK_VIDEO_PATH_PREFIX}
+      QAONGDUR_VISION_MOCK_VIDEO_USE_VMS: "true"
       QAONGDUR_VISION_DATA_DIR: /data
       QAONGDUR_VISION_DATABASE_PATH: /data/vision.sqlite3
       QAONGDUR_VISION_ARTIFACTS_DIR: /data/artifacts
@@ -258,6 +301,8 @@ services:
       QAONGDUR_VISION_EMBEDDING_ENABLED: ${VISION_EMBEDDING_ENABLED}
       QAONGDUR_VISION_FACE_ENABLED: ${VISION_FACE_ENABLED}
       QAONGDUR_VISION_FACE_MIN_TRACK_SECONDS: ${VISION_FACE_MIN_TRACK_SECONDS}
+      QAONGDUR_VISION_FACE_MODEL_NAME: Megatron
+      QAONGDUR_VISION_FACE_SERVICE_URL: http://face-api:8020
     volumes:
       - ../../../Video:/mock-videos:ro
       - vision-data:/data
@@ -271,6 +316,8 @@ services:
       object-storage:
         condition: service_started
       mediamtx:
+        condition: service_started
+      face-api:
         condition: service_started
     healthcheck:
       test:
@@ -289,3 +336,4 @@ volumes:
   mediamtx-recordings:
   control-api-data:
   vision-data:
+  face-runtime:

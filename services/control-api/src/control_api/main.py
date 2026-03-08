@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from pathlib import Path
+import re
 from typing import Annotated
 
 import uvicorn
@@ -110,6 +112,13 @@ def _serialize_camera(
     media_client: MediaMtxClient,
 ) -> dict[str, object]:
     health = path_state_to_health(path_state)
+    tags = ["mediamtx", "recording-enabled"]
+    if record.ingest_mode == "pull":
+        tags.append("rtsp")
+    if record.source_kind == "mock-video":
+        tags.append("mock-video")
+    if record.system_managed:
+        tags.append("system-managed")
     return {
         "id": record.id,
         "siteId": record.site_id,
@@ -126,7 +135,7 @@ def _serialize_camera(
             (path_state.ready_time or path_state.online_time) if path_state else None
         )
         or record.created_at,
-        "tags": ["rtsp", "mediamtx", "recording-enabled"],
+        "tags": tags,
     }
 
 
@@ -162,6 +171,7 @@ def _serialize_device(camera: dict[str, object]) -> dict[str, object]:
         "lastHeartbeatAt": camera["lastSeenAt"],
         "uptimePct": camera["uptimePct"],
         "packetLossPct": 0.0 if health == "healthy" else 1.0,
+        "tags": list(camera.get("tags", [])),
     }
 
 
@@ -240,6 +250,58 @@ def _get_camera_or_404(camera_store: CameraStore, camera_id: str) -> CameraRecor
     return record
 
 
+def _slugify(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
+def _titleize(stem: str) -> str:
+    return stem.replace("-", " ").replace("_", " ").title()
+
+
+def _discover_mock_video_cameras(settings: Settings) -> list[CameraRecord]:
+    if not settings.mock_video_dir:
+        return []
+
+    root = Path(settings.mock_video_dir)
+    if not root.exists():
+        return []
+
+    cameras: list[CameraRecord] = []
+    for file_path in sorted(root.glob("*.mp4")):
+        stem = _slugify(file_path.stem)
+        if not stem:
+            continue
+        path_name = f"{settings.mock_video_path_prefix}-{stem}"
+        cameras.append(
+            CameraRecord(
+                id=f"cam-{path_name}",
+                site_id=settings.default_site_id,
+                name=_titleize(file_path.stem),
+                zone=settings.mock_video_zone,
+                rtsp_url=f"{settings.mock_video_rtsp_base_url.rstrip('/')}/{path_name}",
+                path_name=path_name,
+                created_at=datetime.now(tz=UTC).isoformat(),
+                ingest_mode="publish",
+                system_managed=True,
+                source_kind="mock-video",
+                source_ref=str(file_path),
+            )
+        )
+    return cameras
+
+
+def _sync_mock_video_inventory(camera_store: CameraStore, settings: Settings) -> None:
+    camera_store.sync_system_cameras(
+        source_kind="mock-video",
+        cameras=_discover_mock_video_cameras(settings),
+    )
+
+
+def _list_records(camera_store: CameraStore, settings: Settings) -> list[CameraRecord]:
+    _sync_mock_video_inventory(camera_store, settings)
+    return camera_store.list_cameras()
+
+
 async def _list_path_states(
     records: list[CameraRecord],
     media_client: MediaMtxClient,
@@ -253,7 +315,9 @@ async def _list_path_states(
         raise raise_as_bad_gateway(error) from error
 
     missing_records = [
-        record for record in records if record.path_name not in path_states
+        record
+        for record in records
+        if record.ingest_mode == "pull" and record.path_name not in path_states
     ]
     if not missing_records:
         return path_states
@@ -310,9 +374,10 @@ def create_app() -> FastAPI:
         _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
         camera_store: Annotated[CameraStore, Depends(get_camera_store)],
         media_client: Annotated[MediaMtxClient, Depends(get_mediamtx_client)],
+        service_settings: Annotated[Settings, Depends(get_settings)],
         siteId: str | None = None,
     ) -> list[dict[str, object]]:
-        records = camera_store.list_cameras()
+        records = _list_records(camera_store, service_settings)
         path_states = await _list_path_states(records, media_client)
         if siteId:
             records = [record for record in records if record.site_id == siteId]
@@ -360,8 +425,17 @@ def create_app() -> FastAPI:
         ],
         camera_store: Annotated[CameraStore, Depends(get_camera_store)],
         media_client: Annotated[MediaMtxClient, Depends(get_mediamtx_client)],
+        service_settings: Annotated[Settings, Depends(get_settings)],
     ) -> dict[str, object]:
+        _sync_mock_video_inventory(camera_store, service_settings)
         record = _get_camera_or_404(camera_store, camera_id)
+
+        if record.ingest_mode != "pull":
+            try:
+                path_states = await media_client.list_paths()
+            except MediaMtxError as error:
+                raise raise_as_bad_gateway(error) from error
+            return _serialize_camera(record, path_states.get(record.path_name), media_client)
 
         try:
             await media_client.reconnect_camera_path(
@@ -383,8 +457,19 @@ def create_app() -> FastAPI:
         ],
         camera_store: Annotated[CameraStore, Depends(get_camera_store)],
         media_client: Annotated[MediaMtxClient, Depends(get_mediamtx_client)],
+        service_settings: Annotated[Settings, Depends(get_settings)],
     ) -> dict[str, object]:
+        _sync_mock_video_inventory(camera_store, service_settings)
         record = _get_camera_or_404(camera_store, camera_id)
+
+        if record.system_managed:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "System-managed mock cameras are derived from the local Video directory "
+                    "and cannot be removed while the mock-video stack is enabled."
+                ),
+            )
 
         try:
             await media_client.delete_camera_path(
@@ -412,9 +497,10 @@ def create_app() -> FastAPI:
         _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
         camera_store: Annotated[CameraStore, Depends(get_camera_store)],
         media_client: Annotated[MediaMtxClient, Depends(get_mediamtx_client)],
+        service_settings: Annotated[Settings, Depends(get_settings)],
         siteId: str | None = None,
     ) -> list[dict[str, object]]:
-        records = camera_store.list_cameras()
+        records = _list_records(camera_store, service_settings)
         path_states = await _list_path_states(records, media_client)
         if siteId:
             records = [record for record in records if record.site_id == siteId]
@@ -429,9 +515,10 @@ def create_app() -> FastAPI:
         _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
         camera_store: Annotated[CameraStore, Depends(get_camera_store)],
         media_client: Annotated[MediaMtxClient, Depends(get_mediamtx_client)],
+        service_settings: Annotated[Settings, Depends(get_settings)],
         siteId: str | None = None,
     ) -> dict[str, object]:
-        records = camera_store.list_cameras()
+        records = _list_records(camera_store, service_settings)
         path_states = await _list_path_states(records, media_client)
         if siteId:
             records = [record for record in records if record.site_id == siteId]
@@ -482,7 +569,7 @@ def create_app() -> FastAPI:
         media_client: Annotated[MediaMtxClient, Depends(get_mediamtx_client)],
         service_settings: Annotated[Settings, Depends(get_settings)],
     ) -> list[dict[str, object]]:
-        records = camera_store.list_cameras()
+        records = _list_records(camera_store, service_settings)
         if body.cameraIds:
             allowed_ids = set(body.cameraIds)
             records = [record for record in records if record.id in allowed_ids]
@@ -568,9 +655,10 @@ def create_app() -> FastAPI:
         _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
         camera_store: Annotated[CameraStore, Depends(get_camera_store)],
         media_client: Annotated[MediaMtxClient, Depends(get_mediamtx_client)],
+        service_settings: Annotated[Settings, Depends(get_settings)],
         siteId: str | None = None,
     ) -> list[dict[str, object]]:
-        records = camera_store.list_cameras()
+        records = _list_records(camera_store, service_settings)
         path_states = await _list_path_states(records, media_client)
         if siteId:
             records = [record for record in records if record.site_id == siteId]

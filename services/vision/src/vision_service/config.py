@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     storage_bucket: str = "qaongdur-dev"
     default_site_id: str = "site-local-01"
     mock_video_dir: str = "./mock-videos"
+    mock_video_rtsp_base_url: str = "rtsp://mediamtx:8554"
+    mock_video_path_prefix: str = "mock-video"
+    mock_video_use_vms: bool = True
     data_dir: str = "./data"
     database_path: str = "./data/vision.sqlite3"
     artifacts_dir: str = "./data/artifacts"
@@ -37,7 +40,9 @@ class Settings(BaseSettings):
     embedding_model_name: str = "MobileCLIP2-S0"
     face_enabled: bool = True
     face_min_track_seconds: float = 2.0
-    face_model_name: str = "InspireFace-small"
+    face_model_name: str = "Megatron"
+    face_service_url: str = "http://face-api:8020"
+    face_request_timeout_seconds: float = 15.0
 
     def ensure_directories(self) -> None:
         Path(self.data_dir).mkdir(parents=True, exist_ok=True)

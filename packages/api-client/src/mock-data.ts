@@ -279,6 +279,7 @@ const deviceCatalog: Device[] = [
       lastHeartbeatAt: camera.lastSeenAt,
       uptimePct: camera.uptimePct,
       packetLossPct: Number((seeded(camera.id.length + 22) * 4).toFixed(2)),
+      tags: [...camera.tags],
     }),
   ),
   ...siteCatalog.flatMap((site, idx) => [
@@ -294,6 +295,7 @@ const deviceCatalog: Device[] = [
       lastHeartbeatAt: minutesAgoIso(4 + idx * 2),
       uptimePct: 99.12,
       packetLossPct: Number((0.1 + seeded(idx + 30)).toFixed(2)),
+      tags: ["recording", "rack"],
     } satisfies Device,
     {
       id: `dev-${site.code.toLowerCase()}-gw`,
@@ -307,6 +309,7 @@ const deviceCatalog: Device[] = [
       lastHeartbeatAt: minutesAgoIso(2 + idx),
       uptimePct: 99.74,
       packetLossPct: Number((0.04 + seeded(idx + 40)).toFixed(2)),
+      tags: ["edge", "bridge"],
     } satisfies Device,
   ]),
 ];

@@ -51,6 +51,7 @@ Current run modes:
 - UI-only mock mode: start `pnpm --filter @qaongdur/web dev`
 - hybrid auth mode: start Keycloak and `services/control-api`, then run the web app locally
 - core container mode: run `make docker-up`, which starts the full local stack and uses the real backend for camera, live, overview, playback, and device routes
+- VMS-backed mock-video mode: run `make vision-up`, which adds `mock-streamer`, `face-api`, and `vision` on top of the core stack so the crop pipeline consumes MediaMTX relay URLs instead of file paths
 
 ### `VmsApiClient`
 
@@ -70,8 +71,8 @@ The frontend only talks to the data layer through this interface:
 | `getIncidentById(id)` | incident id | `Promise<Incident \| undefined>` | finds one incident in mock storage | incident detail page |
 | `searchPlayback(params)` | `PlaybackSearchParams` | `Promise<PlaybackSegment[]>` | returns MediaMTX recording spans in backend mode and generated 15-minute buckets in mock mode | playback page |
 | `listDevices(siteId?)` | optional `siteId` | `Promise<Device[]>` | returns all devices or a site-scoped subset | devices page |
-| `listVisionSources()` | none | `Promise<VisionSource[]>` | returns discovered mock-video sources from `services/vision` | crop gallery page |
-| `getVisionStatus()` | none | `Promise<VisionPipelineStatus>` | returns detector, embedding, face, job, and storage status | crop gallery page |
+| `listVisionSources()` | none | `Promise<VisionSource[]>` | returns discovered mock-video sources with file metadata plus MediaMTX relay URLs | crop gallery page |
+| `getVisionStatus()` | none | `Promise<VisionPipelineStatus>` | returns detector, embedding, face-sidecar, job, and storage status | crop gallery page |
 | `runVisionMockJob(sourceIds?)` | optional source ids | `Promise<VisionJobStatus>` | starts a background mock-video processing job | crop gallery page |
 | `listCropTracks(filter?)` | `CropTrackFilter` | `Promise<CropTrack[]>` | returns stored first, middle, and last crop states per track | crop gallery page |
 
@@ -259,6 +260,9 @@ All of the following types live in `packages/types/src/index.ts`.
 - `cameraId: string`
 - `cameraName: string`
 - `filePath: string`
+- `pathName: string`
+- `streamUrl: string`
+- `captureMode: "file" | "rtsp-relay"`
 - `durationSec: number`
 - `frameWidth: number`
 - `frameHeight: number`
@@ -270,7 +274,7 @@ All of the following types live in `packages/types/src/index.ts`.
 - `sampleMode: boolean`
 - `detector: { available: boolean; modelName: string; detail: string }`
 - `embedding: { modelName: string }`
-- `face: { enabled: boolean; modelName: string }`
+- `face: { available: boolean; enabled: boolean; mode: string; modelName: string; detail: string }`
 - `latestJob?: VisionJobStatus | null`
 - `storage: VisionStorageStatus`
 

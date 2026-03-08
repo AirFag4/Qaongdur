@@ -223,8 +223,8 @@ export function CropGalleryPage() {
         <Card className="space-y-3">
           <div>
             <CardTitle>Vision Status</CardTitle>
-            <CardDescription>
-              Mock-video processing status, storage usage, and runtime model selection.
+              <CardDescription>
+              VMS-backed mock-video processing status, storage usage, and runtime model selection.
             </CardDescription>
           </div>
 
@@ -256,6 +256,13 @@ export function CropGalleryPage() {
             <div className="flex items-center justify-between gap-2">
               <span>Face</span>
               <span>{status.data?.face.modelName}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span>Face mode</span>
+              <span>{status.data?.face.mode}</span>
+            </div>
+            <div className="rounded-md border border-stone-800 bg-stone-900/70 p-2 text-[11px] text-stone-400">
+              {status.data?.face.detail}
             </div>
             {status.data?.latestJob?.detail ? (
               <div className="rounded border border-amber-700/70 bg-amber-950/40 px-2 py-1 text-xs text-amber-200">

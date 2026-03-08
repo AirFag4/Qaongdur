@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     default_site_code: str = "LOCAL-01"
     default_site_name: str = "Local Camera Lab"
     default_site_region: str = "Local"
+    mock_video_dir: str | None = None
+    mock_video_path_prefix: str = "mock-video"
+    mock_video_zone: str = "Mock Video Lab"
+    mock_video_rtsp_base_url: str = "rtsp://mediamtx:8554"
     mediamtx_api_url: str = "http://mediamtx:9997"
     mediamtx_api_user: str = "qaongdur-api"
     mediamtx_api_password: str = "qaongdur-api"

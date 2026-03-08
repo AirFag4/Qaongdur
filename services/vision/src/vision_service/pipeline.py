@@ -4,6 +4,7 @@ import json
 import logging
 from pathlib import Path
 from threading import Lock, Thread
+import time
 from uuid import uuid4
 
 import cv2
@@ -15,7 +16,7 @@ from .detection import ObjectDetector
 from .domain import ClosedTrack, MockVideoSource, utcnow_iso
 from .embedding import CropEmbedder
 from .face import FaceEmbedder
-from .mock_sources import discover_mock_sources
+from .mock_sources import build_mock_path_name, build_mock_stream_url, discover_mock_sources, slugify
 from .tracking import SimpleTrackManager
 
 LOGGER = logging.getLogger(__name__)
@@ -50,6 +51,8 @@ class VisionPipelineService:
             enabled=settings.face_enabled,
             model_name=settings.face_model_name,
             minimum_track_seconds=settings.face_min_track_seconds,
+            service_url=settings.face_service_url,
+            request_timeout_seconds=settings.face_request_timeout_seconds,
         )
         self._job_lock = Lock()
         self._job_thread: Thread | None = None
@@ -59,6 +62,9 @@ class VisionPipelineService:
         sources = discover_mock_sources(
             self._settings.mock_video_dir,
             default_site_id=self._settings.default_site_id,
+            rtsp_base_url=self._settings.mock_video_rtsp_base_url,
+            path_prefix=self._settings.mock_video_path_prefix,
+            use_vms=self._settings.mock_video_use_vms,
         )
         self._repository.upsert_sources(
             [
@@ -87,6 +93,9 @@ class VisionPipelineService:
                 "cameraId": row["camera_id"],
                 "cameraName": row["camera_name"],
                 "filePath": row["file_path"],
+                "pathName": self._derive_path_name(row["file_path"]),
+                "streamUrl": self._derive_stream_url(row["file_path"]),
+                "captureMode": "rtsp-relay" if self._settings.mock_video_use_vms else "file",
                 "durationSec": row["duration_sec"],
                 "frameWidth": row["frame_width"],
                 "frameHeight": row["frame_height"],
@@ -108,8 +117,11 @@ class VisionPipelineService:
                 "modelName": self._embedder.runtime_model_name,
             },
             "face": {
+                "available": self._face_embedder.runtime_available,
                 "enabled": self._settings.face_enabled,
+                "mode": self._face_embedder.runtime_mode,
                 "modelName": self._face_embedder.runtime_model_name,
+                "detail": self._face_embedder.runtime_detail,
             },
             "latestJob": self._repository.latest_job(),
             "storage": self._repository.storage_status(self._settings.storage_limit_bytes),
@@ -207,6 +219,9 @@ class VisionPipelineService:
                 camera_id=row["camera_id"],
                 camera_name=row["camera_name"],
                 file_path=row["file_path"],
+                path_name=self._derive_path_name(row["file_path"]),
+                stream_url=self._derive_stream_url(row["file_path"]),
+                capture_mode="rtsp-relay" if self._settings.mock_video_use_vms else "file",
                 duration_sec=float(row["duration_sec"]),
                 frame_width=int(row["frame_width"]),
                 frame_height=int(row["frame_height"]),
@@ -214,6 +229,19 @@ class VisionPipelineService:
             )
             for row in rows
         ]
+
+    def _derive_path_name(self, file_path: str) -> str:
+        stem = slugify(Path(file_path).stem)
+        return build_mock_path_name(
+            stem=stem,
+            path_prefix=self._settings.mock_video_path_prefix,
+        )
+
+    def _derive_stream_url(self, file_path: str) -> str:
+        return build_mock_stream_url(
+            rtsp_base_url=self._settings.mock_video_rtsp_base_url,
+            path_name=self._derive_path_name(file_path),
+        )
 
     def _run_job(
         self,
@@ -255,10 +283,38 @@ class VisionPipelineService:
         source: MockVideoSource,
         sample_fps: float,
     ) -> int:
-        capture = cv2.VideoCapture(source.file_path)
+        capture_target = source.stream_url if source.capture_mode == "rtsp-relay" else source.file_path
+        capture = cv2.VideoCapture(capture_target)
         if not capture.isOpened():
-            raise RuntimeError(f"Unable to open mock video source: {source.file_path}")
+            raise RuntimeError(
+                f"Unable to open mock video source via {source.capture_mode}: {capture_target}"
+            )
 
+        try:
+            if source.capture_mode == "rtsp-relay":
+                return self._process_rtsp_source(
+                    job_id=job_id,
+                    source=source,
+                    sample_fps=sample_fps,
+                    capture=capture,
+                )
+            return self._process_file_source(
+                job_id=job_id,
+                source=source,
+                sample_fps=sample_fps,
+                capture=capture,
+            )
+        finally:
+            capture.release()
+
+    def _process_file_source(
+        self,
+        *,
+        job_id: str,
+        source: MockVideoSource,
+        sample_fps: float,
+        capture: cv2.VideoCapture,
+    ) -> int:
         source_fps = source.source_fps if source.source_fps > 0 else sample_fps
         frame_interval = max(int(round(source_fps / sample_fps)), 1)
         frame_index = -1
@@ -289,7 +345,76 @@ class VisionPipelineService:
                 self._persist_track(job_id=job_id, track=closed_track, sample_fps=sample_fps)
                 processed_tracks += 1
 
-        capture.release()
+        for closed_track in tracker.finalize():
+            self._persist_track(job_id=job_id, track=closed_track, sample_fps=sample_fps)
+            processed_tracks += 1
+
+        return processed_tracks
+
+    def _process_rtsp_source(
+        self,
+        *,
+        job_id: str,
+        source: MockVideoSource,
+        sample_fps: float,
+        capture: cv2.VideoCapture,
+    ) -> int:
+        processed_tracks = 0
+        tracker = SimpleTrackManager(
+            source=source,
+            iou_threshold=self._settings.tracker_iou_threshold,
+            max_gap_frames=self._settings.tracker_max_gap_frames,
+        )
+        first_frame_deadline = time.monotonic() + 15.0
+        started_at: float | None = None
+        last_frame_at: float | None = None
+        next_sample_at = 0.0
+        sample_index = -1
+        duration_sec = max(source.duration_sec, 1.0)
+        sample_interval_sec = 1.0 / max(sample_fps, 0.1)
+
+        while True:
+            ok, frame_bgr = capture.read()
+            now = time.monotonic()
+
+            if not ok:
+                if started_at is None:
+                    if now >= first_frame_deadline:
+                        raise RuntimeError(
+                            f"Timed out waiting for the first frame from {source.stream_url}"
+                        )
+                elif last_frame_at is not None and now - last_frame_at >= 10.0:
+                    raise RuntimeError(
+                        f"RTSP relay stalled for {source.stream_url} after "
+                        f"{duration_sec:.1f}s window start."
+                    )
+                time.sleep(0.1)
+                continue
+
+            if started_at is None:
+                started_at = now
+                next_sample_at = 0.0
+
+            last_frame_at = now
+            elapsed_sec = now - started_at
+            if elapsed_sec >= duration_sec:
+                break
+            if elapsed_sec + 1e-6 < next_sample_at:
+                continue
+
+            next_sample_at += sample_interval_sec
+            sample_index += 1
+            offset_ms = int(min(elapsed_sec, duration_sec) * 1000)
+            detections = self._detector.detect(frame_bgr)
+            closed_tracks = tracker.update(
+                frame_index=sample_index,
+                offset_ms=offset_ms,
+                detections=detections,
+                frame_bgr=frame_bgr,
+            )
+            for closed_track in closed_tracks:
+                self._persist_track(job_id=job_id, track=closed_track, sample_fps=sample_fps)
+                processed_tracks += 1
 
         for closed_track in tracker.finalize():
             self._persist_track(job_id=job_id, track=closed_track, sample_fps=sample_fps)

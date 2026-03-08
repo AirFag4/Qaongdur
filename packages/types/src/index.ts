@@ -167,6 +167,7 @@ export interface Device {
   lastHeartbeatAt: string;
   uptimePct: number;
   packetLossPct: number;
+  tags: string[];
 }
 
 export interface OverviewMetric {
@@ -213,6 +214,9 @@ export interface VisionSource {
   cameraId: string;
   cameraName: string;
   filePath: string;
+  pathName: string;
+  streamUrl: string;
+  captureMode: "file" | "rtsp-relay";
   durationSec: number;
   frameWidth: number;
   frameHeight: number;
@@ -249,8 +253,11 @@ export interface VisionPipelineStatus {
     modelName: string;
   };
   face: {
+    available: boolean;
     enabled: boolean;
+    mode: string;
     modelName: string;
+    detail: string;
   };
   latestJob?: VisionJobStatus | null;
   storage: VisionStorageStatus;

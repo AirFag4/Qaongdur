@@ -43,6 +43,10 @@ Do not split every model into its own network service yet. Instead, implement a 
 - external VMS or NVR connector
 - recording storage backend
 
+Exception:
+
+- if a local face runtime cannot be packaged cleanly inside `services/vision`, it is acceptable to run face inference as a small sidecar service and call it from `services/vision`
+
 ## Suggested Backend Stack
 
 Use:
@@ -98,6 +102,10 @@ Baseline expectations:
 - embeddings: MobileCLIP or an equivalent lightweight image-text embedding model
 - face: InsightFace as optional and disabled by default
 - VLM: optional and disabled by default unless the machine profile enables it
+
+Current repo-specific note:
+
+- the current implementation uses a separate `face-api` sidecar backed by the local `../InspireFace` checkout and the `Megatron` resource pack because the Linux runtime library is not directly importable inside `services/vision`
 
 Design the code so CPU mode works for demos and GPU mode can be enabled later through Docker profiles.
 
@@ -187,5 +195,6 @@ After the first RTSP onboarding and MediaMTX slice is in place, the next backend
 - expose stream probe and failure diagnostics so the UI can show why a camera is not ready
 - add stall detection and controlled auto-reconnect for streams that freeze after initial success
 - migrate the current mock-video track store and embedding tables from SQLite into Postgres plus `pgvector`
+- reduce the first-boot cost of the `face-api` sidecar by replacing runtime compilation with a more reproducible packaged build path
 - turn the current ROI schema design into persisted polygon editing and track-intersection filtering
 - replace the temporary IoU tracker with a stronger reusable tracking package once the local dependency is available in the workspace

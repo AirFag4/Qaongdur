@@ -23,7 +23,8 @@ make docker-down
 make logs
 make seed
 make vision-up
-make mock-stream-up
+make face-up
+make mock-video-up
 ```
 
 Notes:
@@ -47,7 +48,8 @@ Notes:
 - `recording-pruner`
 
 The `vision` service is available under the `vision-cpu` profile via `make vision-up`.
-The `mock-streamer` service is available under the `mock-stream` profile via `make mock-stream-up`.
+The `face-api` service is available under the `face` profile via `make face-up`.
+The `mock-streamer` service is available under the `mock-video` profile via `make mock-video-up`.
 
 ## Current Media Slice
 
@@ -65,7 +67,12 @@ The `recording-pruner` sidecar keeps the `mediamtx-recordings` volume within `RE
 
 ## Mock Video Vision
 
-The `vision-cpu` profile mounts the sibling `Video/` directory into the `vision` container and persists metadata plus crop artifacts in the `vision-data` volume.
+The `vision-cpu` flow now uses the VMS path, not a side-channel file-only path:
+
+- `control-api` discovers `.mp4` files from the sibling `Video/` directory as system-managed cameras
+- `mock-streamer` loops those files into MediaMTX as RTSP paths with the configured `MOCK_VIDEO_PATH_PREFIX`
+- `vision` reads the MediaMTX relay URL for each source and persists metadata plus crop artifacts in the `vision-data` volume
+- `face-api` boots the local InspireFace runtime from the sibling `InspireFace/` checkout and serves crop-level face embeddings to `vision`
 
 Start it with:
 
@@ -77,12 +84,19 @@ make vision-up
 Current behavior:
 
 - discovers local `.mp4` sources from `../Video`
+- exposes those sources as MediaMTX relay URLs such as `rtsp://mediamtx:8554/mock-video-people-walking`
 - samples frames at `VISION_SAMPLE_FPS`, constrained to `1-3 fps`
 - detects only `person` and `vehicle`
 - stores first, middle, and last crop JPEGs for each closed track
 - enforces a `VISION_STORAGE_LIMIT_BYTES` artifact budget, default `10 GB`
+- reports detailed face-sidecar state through `VisionPipelineStatus.face`
 - skips VLM
 - exposes status and crop-track endpoints through `control-api`
+
+Current limitation:
+
+- the first `face-api` startup compiles InspireFace from source and can take several minutes before face status becomes available
+- each mock-video job processes the current point in the looping relay for one original file-duration window; it does not restart the publisher from frame zero before every run
 
 ## Mock Streamer
 
@@ -91,24 +105,28 @@ For local testing without a physical camera:
 ```bash
 cp .env.example .env
 make docker-up
-make mock-stream-up
+make mock-video-up
 ```
 
-The mock streamer publishes a looping synthetic test pattern into the main `mediamtx` service.
+The mock streamer now prefers real files from `../Video`:
 
-Default onboarding URL:
+- `people-walking.mp4` becomes `rtsp://mediamtx:8554/mock-video-people-walking`
+- `vehicles.mp4` becomes `rtsp://mediamtx:8554/mock-video-vehicles`
+
+If no `.mp4` files are present, it falls back to a looping synthetic test pattern.
+
+Fallback onboarding URL:
 
 - `rtsp://mediamtx:8554/mock-demo`
 
 Configurable `.env` keys:
 
+- `MOCK_VIDEO_PATH_PREFIX`
 - `MOCK_STREAM_PATH`
 - `MOCK_STREAM_WIDTH`
 - `MOCK_STREAM_HEIGHT`
 - `MOCK_STREAM_FPS`
 - `MOCK_STREAM_BITRATE`
-
-If you change `MOCK_STREAM_PATH`, use the matching RTSP URL when adding the camera.
 
 ## RTSP Troubleshooting
 

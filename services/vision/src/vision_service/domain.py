@@ -17,6 +17,9 @@ class MockVideoSource:
     camera_id: str
     camera_name: str
     file_path: str
+    path_name: str
+    stream_url: str
+    capture_mode: str
     duration_sec: float
     frame_width: int
     frame_height: int
