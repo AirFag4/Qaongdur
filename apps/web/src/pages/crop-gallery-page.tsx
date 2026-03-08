@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
@@ -24,43 +24,52 @@ const formatBytes = (bytes: number) => {
   return `${bytes} B`;
 };
 
+const toInputValue = (date: Date) => date.toISOString().slice(0, 16);
+
 export function CropGalleryPage() {
   const queryClient = useQueryClient();
-  const [sourceId, setSourceId] = useState<string>("");
+  const [cameraId, setCameraId] = useState<string>("");
   const [label, setLabel] = useState<CropTrackFilter["label"]>("all");
+  const [fromAt, setFromAt] = useState(() => toInputValue(new Date(Date.now() - 2 * 60 * 60 * 1000)));
+  const [toAt, setToAt] = useState(() => toInputValue(new Date()));
+  const [selectedTrackId, setSelectedTrackId] = useState<string>("");
 
   const status = useQuery({
     queryKey: queryKeys.visionStatus,
     queryFn: () => apiClient.getVisionStatus(),
-    refetchInterval: (query) =>
-      query.state.data?.latestJob?.status === "running" ? 4000 : false,
+    refetchInterval: 10_000,
   });
 
   const sources = useQuery({
     queryKey: queryKeys.visionSources,
     queryFn: () => apiClient.listVisionSources(),
-    refetchInterval:
-      status.data?.latestJob?.status === "running" ? 4000 : false,
+    refetchInterval: 10_000,
   });
 
   const activeFilter = useMemo<CropTrackFilter>(
     () => ({
-      sourceId: sourceId || undefined,
+      cameraId: cameraId || undefined,
       label,
+      fromAt: fromAt ? new Date(fromAt).toISOString() : undefined,
+      toAt: toAt ? new Date(toAt).toISOString() : undefined,
     }),
-    [label, sourceId],
+    [cameraId, fromAt, label, toAt],
   );
 
   const tracks = useQuery({
     queryKey: queryKeys.cropTracks(JSON.stringify(activeFilter)),
     queryFn: () => apiClient.listCropTracks(activeFilter),
-    refetchInterval:
-      status.data?.latestJob?.status === "running" ? 4000 : false,
+    refetchInterval: 10_000,
   });
 
-  const runJob = useMutation({
-    mutationFn: () =>
-      apiClient.runVisionMockJob(sourceId ? [sourceId] : undefined),
+  const selectedTrack = useQuery({
+    queryKey: queryKeys.cropTrack(selectedTrackId),
+    queryFn: () => apiClient.getCropTrack(selectedTrackId),
+    enabled: Boolean(selectedTrackId),
+  });
+
+  const triggerScan = useMutation({
+    mutationFn: () => apiClient.runVisionMockJob(),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.visionStatus }),
@@ -70,15 +79,25 @@ export function CropGalleryPage() {
     },
   });
 
+  useEffect(() => {
+    if (!tracks.data?.length) {
+      setSelectedTrackId("");
+      return;
+    }
+    setSelectedTrackId((current) =>
+      current && tracks.data.some((track) => track.id === current) ? current : tracks.data[0].id,
+    );
+  }, [tracks.data]);
+
   if (sources.isLoading || status.isLoading || tracks.isLoading) {
-    return <LoadingState label="Loading crop gallery..." />;
+    return <LoadingState label="Loading tracked crops..." />;
   }
 
   if (sources.error || status.error || tracks.error) {
     return (
       <EmptyState
         title="Crop gallery unavailable"
-        description="Start the vision profile and rerun the mock-video job to populate track crops."
+        description="The vision API could not be reached."
       />
     );
   }
@@ -86,15 +105,15 @@ export function CropGalleryPage() {
   return (
     <div className="space-y-3">
       <FilterBar>
-        <FilterField label="Source">
+        <FilterField label="Camera">
           <select
             className="form-input"
-            value={sourceId}
-            onChange={(event) => setSourceId(event.target.value)}
+            value={cameraId}
+            onChange={(event) => setCameraId(event.target.value)}
           >
-            <option value="">All sources</option>
+            <option value="">All cameras</option>
             {sources.data?.map((source) => (
-              <option key={source.id} value={source.id}>
+              <option key={source.id} value={source.cameraId}>
                 {source.cameraName}
               </option>
             ))}
@@ -104,23 +123,37 @@ export function CropGalleryPage() {
           <select
             className="form-input"
             value={label ?? "all"}
-            onChange={(event) =>
-              setLabel(event.target.value as CropTrackFilter["label"])
-            }
+            onChange={(event) => setLabel(event.target.value as CropTrackFilter["label"])}
           >
             <option value="all">All labels</option>
             <option value="person">Person</option>
             <option value="vehicle">Vehicle</option>
           </select>
         </FilterField>
+        <FilterField label="From">
+          <input
+            type="datetime-local"
+            className="form-input"
+            value={fromAt}
+            onChange={(event) => setFromAt(event.target.value)}
+          />
+        </FilterField>
+        <FilterField label="To">
+          <input
+            type="datetime-local"
+            className="form-input"
+            value={toAt}
+            onChange={(event) => setToAt(event.target.value)}
+          />
+        </FilterField>
         <RoleGate anyOf={["site-admin", "platform-admin"]}>
           <Button
             size="sm"
             variant="secondary"
-            disabled={runJob.isPending || status.data?.latestJob?.status === "running"}
-            onClick={() => runJob.mutate()}
+            disabled={triggerScan.isPending}
+            onClick={() => triggerScan.mutate()}
           >
-            {status.data?.latestJob?.status === "running" ? "Processing..." : "Run Mock Videos"}
+            {triggerScan.isPending ? "Scanning..." : "Scan Recordings Now"}
           </Button>
         </RoleGate>
       </FilterBar>
@@ -129,26 +162,35 @@ export function CropGalleryPage() {
         <Card className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <CardTitle>Crop Tracks</CardTitle>
+              <CardTitle>Track Gallery</CardTitle>
               <CardDescription>
-                Representative middle crops for tracked people and vehicles, with first and last sighting metadata below.
+                Representative crops from automatically processed recording chunks, filtered by real capture time.
               </CardDescription>
             </div>
             <div className="text-right text-xs text-stone-400">
               <p>{tracks.data?.length ?? 0} tracks</p>
-              <p>Detector: {status.data?.detector.modelName}</p>
+              <p>Queue: {status.data?.queueDepth ?? 0}</p>
             </div>
           </div>
 
           {!tracks.data?.length ? (
             <EmptyState
-              title="No crop tracks yet"
-              description="Run the mock-video pipeline to generate tracked crop cards."
+              title="No tracks in this window"
+              description="Wait for recorded chunks to land or broaden the time range."
             />
           ) : (
             <div className="grid auto-rows-fr gap-3 md:grid-cols-2 2xl:grid-cols-3">
               {tracks.data.map((track) => (
-                <Card key={track.id} className="flex h-full flex-col gap-3">
+                <button
+                  key={track.id}
+                  type="button"
+                  onClick={() => setSelectedTrackId(track.id)}
+                  className={`rounded-md border p-3 text-left transition-colors ${
+                    selectedTrackId === track.id
+                      ? "border-cyan-700 bg-cyan-950/20"
+                      : "border-stone-700 bg-stone-950/40 hover:border-stone-500"
+                  }`}
+                >
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <CardTitle className="text-sm">{track.cameraName}</CardTitle>
@@ -161,7 +203,7 @@ export function CropGalleryPage() {
                     </span>
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="mt-3 space-y-1">
                     <div className="aspect-[4/5] overflow-hidden rounded-md border border-stone-700 bg-stone-950">
                       <img
                         src={track.middleCropDataUrl}
@@ -172,41 +214,23 @@ export function CropGalleryPage() {
                     <p className="text-center text-[11px] text-stone-500">Representative crop</p>
                   </div>
 
-                  <div className="grid gap-2 text-[11px] text-stone-400 sm:grid-cols-2">
-                    <div>
-                      <p className="text-stone-500">First seen</p>
-                      <p>{track.firstSeenOffsetLabel}</p>
+                  <div className="mt-3 grid gap-2 text-[11px] text-stone-400">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>First seen</span>
+                      <span>{new Date(track.firstSeenAt).toLocaleString()}</span>
                     </div>
-                    <div>
-                      <p className="text-stone-500">Main frame</p>
-                      <p>{track.middleSeenOffsetLabel}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Last seen</span>
+                      <span>{new Date(track.lastSeenAt).toLocaleString()}</span>
                     </div>
-                    <div>
-                      <p className="text-stone-500">Last seen</p>
-                      <p>{track.lastSeenOffsetLabel}</p>
-                    </div>
-                    <div>
-                      <p className="text-stone-500">Frames</p>
-                      <p>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Frames</span>
+                      <span>
                         {track.frameCount} @ {track.sampleFps} fps
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-stone-500">Embedding</p>
-                      <p>
-                        {track.embeddingStatus}
-                        {track.embeddingModel ? ` • ${track.embeddingModel}` : ""}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-stone-500">Face stage</p>
-                      <p>
-                        {track.faceStatus}
-                        {track.faceModel ? ` • ${track.faceModel}` : ""}
-                      </p>
+                      </span>
                     </div>
                   </div>
-                </Card>
+                </button>
               ))}
             </div>
           )}
@@ -214,60 +238,135 @@ export function CropGalleryPage() {
 
         <Card className="space-y-3">
           <div>
-            <CardTitle>Vision Status</CardTitle>
-              <CardDescription>
-              VMS-backed mock-video processing status, storage usage, and runtime model selection.
+            <CardTitle>Track Detail</CardTitle>
+            <CardDescription>
+              First, main, and last points are preserved for each stored track.
             </CardDescription>
           </div>
 
-          <div className="space-y-2 rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300">
-            <div className="flex items-center justify-between gap-2">
-              <span>Latest job</span>
-              <span>{status.data?.latestJob?.status ?? "idle"}</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span>Tracks stored</span>
-              <span>{status.data?.latestJob?.trackCount ?? 0}</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span>Storage used</span>
-              <span>{formatBytes(status.data?.storage.usedBytes ?? 0)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span>Storage budget</span>
-              <span>{formatBytes(status.data?.storage.limitBytes ?? 0)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span>Detector</span>
-              <span>{status.data?.detector.modelName}</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span>Embedding</span>
-              <span>{status.data?.embedding.modelName}</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span>Face</span>
-              <span>{status.data?.face.modelName}</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span>Face mode</span>
-              <span>{status.data?.face.mode}</span>
-            </div>
-            <div className="rounded-md border border-stone-800 bg-stone-900/70 p-2 text-[11px] text-stone-400">
-              {status.data?.face.detail}
-            </div>
-            {status.data?.latestJob?.detail ? (
-              <div className="rounded border border-amber-700/70 bg-amber-950/40 px-2 py-1 text-xs text-amber-200">
-                {status.data.latestJob.detail}
-              </div>
-            ) : null}
-          </div>
+          {!selectedTrackId ? (
+            <EmptyState title="Select a track" description="Pick a crop card to inspect the saved movement points and metadata." />
+          ) : selectedTrack.isLoading ? (
+            <LoadingState label="Loading track detail..." />
+          ) : !selectedTrack.data ? (
+            <EmptyState title="Track unavailable" description="The selected track could not be loaded." />
+          ) : (
+            (() => {
+              const track = selectedTrack.data;
 
-          <div className="rounded-md border border-dashed border-stone-700 bg-stone-950/50 p-3 text-xs text-stone-400">
-            ROI filtering is not implemented in this page yet. The current Task 03 plan keeps ROI as a future database design item so the track schema can evolve without rewriting the gallery contract.
-          </div>
+              return (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: "First", src: track.firstCropDataUrl },
+                  { label: "Main", src: track.middleCropDataUrl },
+                  { label: "Last", src: track.lastCropDataUrl },
+                ].map((image) => (
+                  <div key={image.label} className="space-y-1">
+                    <div className="aspect-[4/5] overflow-hidden rounded-md border border-stone-700 bg-stone-950">
+                      <img
+                        src={image.src}
+                        alt={`${track.cameraName} ${image.label.toLowerCase()} crop`}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <p className="text-center text-[11px] text-stone-500">{image.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-2 text-sm text-stone-300">
+                <div className="flex items-center justify-between gap-2">
+                  <span>Camera</span>
+                  <span>{track.cameraName}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span>Track label</span>
+                  <span>{track.label}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span>Segment start</span>
+                  <span>{track.segmentStartAt ? new Date(track.segmentStartAt).toLocaleString() : "n/a"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span>Embedding</span>
+                  <span>
+                    {track.embeddingStatus}
+                    {track.embeddingDim ? ` • ${track.embeddingDim}d` : ""}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span>Face</span>
+                  <span>
+                    {track.faceStatus}
+                    {track.faceDim ? ` • ${track.faceDim}d` : ""}
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300">
+                <p className="mb-2 text-xs uppercase tracking-wide text-stone-500">Saved movement points</p>
+                <div className="grid gap-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>First</span>
+                    <span>
+                      {track.firstPoint
+                        ? `${track.firstPoint.x}, ${track.firstPoint.y}`
+                        : "n/a"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Main</span>
+                    <span>
+                      {track.middlePoint
+                        ? `${track.middlePoint.x}, ${track.middlePoint.y}`
+                        : "n/a"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Last</span>
+                    <span>
+                      {track.lastPoint
+                        ? `${track.lastPoint.x}, ${track.lastPoint.y}`
+                        : "n/a"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+              );
+            })()
+          )}
         </Card>
       </div>
+
+      <Card className="space-y-3">
+        <div>
+          <CardTitle>Vision Status</CardTitle>
+          <CardDescription>
+            Automatic processing runs against finalized MediaMTX recording chunks, not the original mock files.
+          </CardDescription>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300">
+            <p className="text-xs uppercase tracking-wide text-stone-500">Latest job</p>
+            <p className="mt-1">{status.data?.latestJob?.status ?? "idle"}</p>
+          </div>
+          <div className="rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300">
+            <p className="text-xs uppercase tracking-wide text-stone-500">Storage used</p>
+            <p className="mt-1">{formatBytes(status.data?.storage.usedBytes ?? 0)}</p>
+          </div>
+          <div className="rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300">
+            <p className="text-xs uppercase tracking-wide text-stone-500">Detector</p>
+            <p className="mt-1">{status.data?.detector.modelName}</p>
+          </div>
+          <div className="rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300">
+            <p className="text-xs uppercase tracking-wide text-stone-500">Vector store</p>
+            <p className="mt-1">{status.data?.vectorStore?.provider ?? "n/a"}</p>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }

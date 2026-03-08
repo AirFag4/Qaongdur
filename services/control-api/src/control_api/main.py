@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import hashlib
 from pathlib import Path
 import re
 from typing import Annotated, Literal
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -86,6 +87,9 @@ ALL_PLATFORM_ROLES: tuple[PlatformRole, ...] = (
     "reviewer",
     "viewer",
 )
+
+SUPPORTED_MOCK_VIDEO_SUFFIXES = {".mp4", ".webm", ".mkv", ".mov"}
+LEGACY_MOCK_VIDEO_FILES = {"people-walking.mp4", "vehicles.mp4"}
 
 
 def _serialize_principal(principal: KeycloakPrincipal) -> dict[str, object]:
@@ -182,6 +186,25 @@ def _serialize_device(camera: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _serialize_vision_source(
+    record: CameraRecord,
+    path_state: PathState | None,
+    media_client: MediaMtxClient,
+) -> dict[str, object]:
+    return {
+        "id": record.id,
+        "siteId": record.site_id,
+        "cameraId": record.id,
+        "cameraName": record.name,
+        "pathName": record.path_name,
+        "relayRtspUrl": f"rtsp://mediamtx:8554/{record.path_name}",
+        "liveStreamUrl": media_client.build_hls_url(record.path_name) if path_state and path_state.ready else None,
+        "health": path_state_to_health(path_state),
+        "sourceKind": record.source_kind,
+        "ingestMode": record.ingest_mode,
+    }
+
+
 def _serialize_overview(cameras: list[dict[str, object]], live_tiles: list[dict[str, object]]) -> dict[str, object]:
     total = len(cameras)
     live = sum(1 for tile in live_tiles if tile["isLive"])
@@ -244,6 +267,7 @@ def _serialize_playback_segment(
         "motionScore": 1.0,
         "durationSec": span.duration,
         "playbackUrl": span.playback_url,
+        "downloadUrl": span.download_url,
     }
 
 
@@ -261,8 +285,48 @@ def _slugify(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
+def _build_mock_video_slug(stem: str) -> str:
+    slug = _slugify(stem)
+    if len(slug) <= 48:
+        return slug
+    digest = hashlib.sha1(stem.encode("utf-8")).hexdigest()[:8]
+    return f"{slug[:39].rstrip('-')}-{digest}"
+
+
+def _require_internal_token(
+    x_qaongdur_internal_token: Annotated[str | None, Header()] = None,
+    settings: Annotated[Settings, Depends(get_settings)] = None,
+) -> None:
+    if not x_qaongdur_internal_token or x_qaongdur_internal_token != settings.internal_service_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid internal service token.",
+        )
+
+
 def _titleize(stem: str) -> str:
     return stem.replace("-", " ").replace("_", " ").title()
+
+
+def _discover_mock_video_files(root: Path) -> list[Path]:
+    supported_files = [
+        file_path
+        for file_path in sorted(root.iterdir())
+        if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_MOCK_VIDEO_SUFFIXES
+    ]
+    if not supported_files:
+        return []
+
+    custom_files = [
+        file_path for file_path in supported_files if file_path.name not in LEGACY_MOCK_VIDEO_FILES
+    ]
+    selected_files = custom_files or supported_files
+    deduped_by_stem: dict[str, Path] = {}
+    for file_path in selected_files:
+        existing = deduped_by_stem.get(file_path.stem)
+        if existing is None or file_path.stat().st_size > existing.stat().st_size:
+            deduped_by_stem[file_path.stem] = file_path
+    return sorted(deduped_by_stem.values(), key=lambda file_path: file_path.name.lower())
 
 
 def _discover_mock_video_cameras(settings: Settings) -> list[CameraRecord]:
@@ -274,8 +338,8 @@ def _discover_mock_video_cameras(settings: Settings) -> list[CameraRecord]:
         return []
 
     cameras: list[CameraRecord] = []
-    for file_path in sorted(root.glob("*.mp4")):
-        stem = _slugify(file_path.stem)
+    for file_path in _discover_mock_video_files(root):
+        stem = _build_mock_video_slug(file_path.stem)
         if not stem:
             continue
         path_name = f"{settings.mock_video_path_prefix}-{stem}"
@@ -619,6 +683,24 @@ def create_app() -> FastAPI:
         segments.sort(key=lambda item: str(item["startAt"]))
         return segments
 
+    @app.get("/api/v1/internal/vision/sources")
+    async def list_internal_vision_sources(
+        _: Annotated[None, Depends(_require_internal_token)],
+        camera_store: Annotated[CameraStore, Depends(get_camera_store)],
+        media_client: Annotated[MediaMtxClient, Depends(get_mediamtx_client)],
+        service_settings: Annotated[Settings, Depends(get_settings)],
+    ) -> dict[str, object]:
+        records = _list_records(camera_store, service_settings)
+        path_states = await _list_path_states(records, media_client)
+        sources = [
+            _serialize_vision_source(record, path_states.get(record.path_name), media_client)
+            for record in records
+        ]
+        return {
+            "count": len(sources),
+            "sources": sources,
+        }
+
     @app.get("/api/v1/vision/status")
     async def get_vision_status(
         _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
@@ -629,8 +711,8 @@ def create_app() -> FastAPI:
         except VisionServiceError as error:
             raise raise_vision_bad_gateway(error) from error
 
-    @app.get("/api/v1/vision/mock-sources")
-    async def list_vision_mock_sources(
+    @app.get("/api/v1/vision/sources")
+    async def list_vision_sources(
         _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
         vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
     ) -> dict[str, object]:
@@ -639,8 +721,19 @@ def create_app() -> FastAPI:
         except VisionServiceError as error:
             raise raise_vision_bad_gateway(error) from error
 
-    @app.post("/api/v1/vision/mock-jobs/run")
-    async def run_vision_mock_job(
+    @app.get("/api/v1/vision/mock-sources")
+    async def list_vision_sources_legacy(
+        principal: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
+        vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
+    ) -> dict[str, object]:
+        del principal
+        try:
+            return await vision_client.list_sources()
+        except VisionServiceError as error:
+            raise raise_vision_bad_gateway(error) from error
+
+    @app.post("/api/v1/vision/scan")
+    async def trigger_vision_scan(
         body: VisionMockJobBody,
         _: Annotated[
             KeycloakPrincipal,
@@ -649,7 +742,22 @@ def create_app() -> FastAPI:
         vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
     ) -> dict[str, object]:
         try:
-            return await vision_client.run_mock_job(source_ids=body.sourceIds)
+            return await vision_client.trigger_scan(source_ids=body.sourceIds)
+        except VisionServiceError as error:
+            raise raise_vision_bad_gateway(error) from error
+
+    @app.post("/api/v1/vision/mock-jobs/run")
+    async def trigger_vision_scan_legacy(
+        body: VisionMockJobBody,
+        principal: Annotated[
+            KeycloakPrincipal,
+            Depends(require_roles("site-admin", "platform-admin")),
+        ],
+        vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
+    ) -> dict[str, object]:
+        del principal
+        try:
+            return await vision_client.trigger_scan(source_ids=body.sourceIds)
         except VisionServiceError as error:
             raise raise_vision_bad_gateway(error) from error
 
@@ -658,10 +766,30 @@ def create_app() -> FastAPI:
         _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
         vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
         sourceId: str | None = None,
+        cameraId: str | None = None,
         label: str | None = None,
+        fromAt: str | None = None,
+        toAt: str | None = None,
     ) -> dict[str, object]:
         try:
-            return await vision_client.list_crop_tracks(source_id=sourceId, label=label)
+            return await vision_client.list_crop_tracks(
+                source_id=sourceId,
+                camera_id=cameraId,
+                label=label,
+                from_at=fromAt,
+                to_at=toAt,
+            )
+        except VisionServiceError as error:
+            raise raise_vision_bad_gateway(error) from error
+
+    @app.get("/api/v1/vision/crop-tracks/{track_id}")
+    async def get_vision_crop_track(
+        track_id: str,
+        _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
+        vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
+    ) -> dict[str, object]:
+        try:
+            return await vision_client.get_crop_track(track_id)
         except VisionServiceError as error:
             raise raise_vision_bad_gateway(error) from error
 
@@ -695,6 +823,35 @@ def create_app() -> FastAPI:
             "audience": service_settings.keycloak_audience,
             "checkedAt": datetime.now(tz=UTC).isoformat(),
             "user": _serialize_principal(principal),
+        }
+
+    @app.get("/api/v1/settings")
+    async def get_system_settings(
+        principal: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
+        service_settings: Annotated[Settings, Depends(get_settings)],
+    ) -> dict[str, object]:
+        return {
+            "checkedAt": datetime.now(tz=UTC).isoformat(),
+            "auth": {
+                "issuer": service_settings.keycloak_issuer_url,
+                "audience": service_settings.keycloak_audience,
+                "stepUpAcr": service_settings.keycloak_step_up_acr,
+                "user": _serialize_principal(principal),
+            },
+            "recording": {
+                "segmentDurationSeconds": service_settings.mediamtx_record_segment_duration_seconds,
+                "playbackPublicUrl": service_settings.mediamtx_playback_public_url,
+                "hlsPublicUrl": service_settings.mediamtx_hls_public_url,
+            },
+            "vision": {
+                "serviceUrl": service_settings.vision_service_url,
+                "autoIngest": True,
+                "notes": [
+                    "Recorded chunks are processed automatically after they land in MediaMTX storage.",
+                    "Auth controls now live on the Settings page.",
+                    "Runtime settings are env-backed right now; this page is the planning surface for future writable config.",
+                ],
+            },
         }
 
     @app.get("/api/v1/auth/allowed-actions")

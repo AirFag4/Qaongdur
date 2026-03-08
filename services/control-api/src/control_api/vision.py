@@ -18,11 +18,11 @@ class VisionServiceClient:
         return await self._get_json("/api/v1/vision/status")
 
     async def list_sources(self) -> dict[str, object]:
-        return await self._get_json("/api/v1/vision/mock-sources")
+        return await self._get_json("/api/v1/vision/sources")
 
-    async def run_mock_job(self, *, source_ids: list[str]) -> dict[str, object]:
+    async def trigger_scan(self, *, source_ids: list[str]) -> dict[str, object]:
         return await self._post_json(
-            "/api/v1/vision/mock-jobs/run",
+            "/api/v1/vision/scan",
             {"sourceIds": source_ids},
         )
 
@@ -30,14 +30,26 @@ class VisionServiceClient:
         self,
         *,
         source_id: str | None = None,
+        camera_id: str | None = None,
         label: str | None = None,
+        from_at: str | None = None,
+        to_at: str | None = None,
     ) -> dict[str, object]:
         params = {}
         if source_id:
             params["sourceId"] = source_id
+        if camera_id:
+            params["cameraId"] = camera_id
         if label:
             params["label"] = label
+        if from_at:
+            params["fromAt"] = from_at
+        if to_at:
+            params["toAt"] = to_at
         return await self._get_json("/api/v1/vision/crop-tracks", params=params)
+
+    async def get_crop_track(self, track_id: str) -> dict[str, object]:
+        return await self._get_json(f"/api/v1/vision/crop-tracks/{track_id}")
 
     async def _get_json(
         self,

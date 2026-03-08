@@ -7,7 +7,7 @@ from uuid import uuid4
 import numpy as np
 import supervision as sv
 
-from .domain import ClosedTrack, Detection, MockVideoSource, TrackObservation, utcnow_iso
+from .domain import ClosedTrack, Detection, TrackObservation, VisionSource
 
 TRACK_LABELS = ("person", "vehicle")
 TRACK_CLASS_IDS = {
@@ -69,7 +69,7 @@ def _to_supervision_detections(
 @dataclass(slots=True)
 class _ActiveTrack:
     id: str
-    source: MockVideoSource
+    source: VisionSource
     label: str
     detector_label: str
     external_tracker_id: int
@@ -83,13 +83,14 @@ class _ActiveTrack:
         *,
         frame_index: int,
         offset_ms: int,
+        captured_at: str,
         detection: Detection,
         frame_bgr: np.ndarray,
     ) -> None:
         observation = TrackObservation(
             frame_index=frame_index,
             offset_ms=offset_ms,
-            captured_at=utcnow_iso(),
+            captured_at=captured_at,
             confidence=detection.confidence,
             bbox=detection.bbox,
             crop_bgr=_crop_frame(frame_bgr, detection.bbox),
@@ -119,7 +120,7 @@ class ByteTrackManager:
     def __init__(
         self,
         *,
-        source: MockVideoSource,
+        source: VisionSource,
         activation_threshold: float,
         matching_threshold: float,
         lost_buffer_frames: int,
@@ -147,6 +148,7 @@ class ByteTrackManager:
         *,
         frame_index: int,
         offset_ms: int,
+        captured_at: str,
         detections: list[Detection],
         frame_bgr: np.ndarray,
     ) -> list[ClosedTrack]:
@@ -185,6 +187,7 @@ class ByteTrackManager:
                 track.update(
                     frame_index=frame_index,
                     offset_ms=offset_ms,
+                    captured_at=captured_at,
                     detection=detection,
                     frame_bgr=frame_bgr,
                 )

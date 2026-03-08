@@ -53,7 +53,7 @@ Current implemented slice:
 Current known limitation:
 
 - the relay path now supports per-camera RTSP transport selection, but some cameras still need a vendor-specific RTSP path or `rtspAnyPort` compatibility mode before they remain stable
-- vision embeddings are persisted in SQLite tables for now and need a future Postgres plus `pgvector` migration before they become a real vector-search backend
+- track metadata stays in the local SQLite store for now, while object and face embeddings are pushed into Qdrant for vector storage
 - the first `face-api` startup compiles InspireFace from source, so face status can remain unavailable for several minutes on a cold boot
 
 ## Task 03 Vision Data Shape

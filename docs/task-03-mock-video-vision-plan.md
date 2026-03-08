@@ -250,13 +250,17 @@ Current limitations after implementation:
 - the first `vision` startup after an image rebuild is slower than the earlier scaffold because packaged detector, embedder, and tracker dependencies are now installed in the image
 - clones that skipped `--recurse-submodules` must initialize `third_party/InspireFace` before the face image can build
 - each job processes the current point in the looping RTSP source rather than resetting the publisher to the exact first frame
+- the recorded-chunk worker currently runs as a single queue, so higher-resolution mock streams can build backlog before every source gets processed
+- historical mock-track rows remain visible after the active mock source set changes unless explicit cleanup or source-retirement logic is added
+- Qdrant collections are created, but current live point upserts still fail with `400 Bad Request` and need a follow-up fix
+- the face sidecar can still time out under load even when the service reports healthy
 - `/crops` page with fixed-aspect track cards, representative middle-crop imagery, and runtime status
 - Compose wiring for `vision-cpu` with persistent `vision-data`
 - local recording-pruner sidecar for the MediaMTX recordings volume with a `10 GB` default budget
 
 Current implementation gaps relative to the long-term design:
 
-- embeddings are stored in SQLite tables, not a true vector-search index yet
+- embeddings are stored in SQLite tables, and Qdrant upserts still need stabilization before the vector index can be treated as the primary store
 - ROI filtering is still design-only
 - the first `face-api` startup is expensive because it compiles InspireFace from source and may download the `Megatron` pack at runtime instead of consuming a prebuilt packaged runtime
 - the current face path still depends on the `third_party/InspireFace` submodule being initialized before the image can build

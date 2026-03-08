@@ -11,7 +11,6 @@ import {
   SiteCameraSwitcher,
 } from "@qaongdur/ui";
 import type { RealtimeEvent } from "@qaongdur/types";
-import { useAuth } from "../auth/use-auth";
 import { apiClient, queryKeys, realtimeSocket } from "../lib/api";
 import { AgentChatRail } from "../components/agent-chat-rail";
 import type { OperatorOutletContext } from "./operator-context";
@@ -24,6 +23,7 @@ const navItems: AppNavItem[] = [
   { id: "playback", label: "Playback", path: "/playback", shortcut: "Alt+5" },
   { id: "devices", label: "Devices", path: "/devices", shortcut: "Alt+6" },
   { id: "crops", label: "Crops", path: "/crops", shortcut: "Alt+7" },
+  { id: "settings", label: "Settings", path: "/settings", shortcut: "Alt+8" },
 ];
 
 const isEditableTarget = (target: EventTarget | null) => {
@@ -46,7 +46,6 @@ const pathToNavPath = (path: string) => {
 };
 
 export function OperatorLayout() {
-  const auth = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [siteId, setSiteId] = useState<string | undefined>();
@@ -202,21 +201,7 @@ export function OperatorLayout() {
           />
         }
         rightRail={<AgentChatRail recentEvents={recentEvents} />}
-        headerActions={
-          <div className="flex items-center gap-2">
-            <div className="hidden text-right sm:block">
-              <p className="text-xs font-medium text-stone-200">
-                {auth.session?.user.displayName}
-              </p>
-              <p className="text-[11px] text-stone-500">
-                {(auth.session?.user.roles ?? []).join(" / ")}
-              </p>
-            </div>
-            <Button size="sm" variant="secondary" onClick={() => void auth.logout()}>
-              Sign Out
-            </Button>
-          </div>
-        }
+        headerActions={<Button size="sm" variant="secondary" onClick={() => navigate("/settings")}>Settings</Button>}
       >
         <Outlet context={outletContext} />
       </AppShell>

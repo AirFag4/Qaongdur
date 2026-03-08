@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     mediamtx_playback_public_url: str = "http://localhost:9996"
     mediamtx_record_segment_duration_seconds: int = 30
     vision_service_url: str = "http://localhost:8010"
+    internal_service_token: str = "qaongdur-internal-dev"
 
     @field_validator(
         "control_api_cors_origins",

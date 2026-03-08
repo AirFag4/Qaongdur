@@ -2,6 +2,7 @@ import type {
   AlertEvent,
   AlertFilter,
   Camera,
+  CropTrackDetail,
   CropTrack,
   CropTrackFilter,
   CreateCameraInput,
@@ -12,6 +13,7 @@ import type {
   PlaybackSearchParams,
   PlaybackSegment,
   Site,
+  SystemSettings,
   VmsApiClient,
   VisionJobStatus,
   VisionPipelineStatus,
@@ -131,7 +133,7 @@ export class HttpApiClient implements VmsApiClient {
   }
 
   async listVisionSources(): Promise<VisionSource[]> {
-    const response = await this._request<{ sources: VisionSource[] }>("/api/v1/vision/mock-sources");
+    const response = await this._request<{ sources: VisionSource[] }>("/api/v1/vision/sources");
     return response.sources;
   }
 
@@ -140,7 +142,7 @@ export class HttpApiClient implements VmsApiClient {
   }
 
   async runVisionMockJob(sourceIds?: string[]): Promise<VisionJobStatus> {
-    return this._request("/api/v1/vision/mock-jobs/run", {
+    return this._request("/api/v1/vision/scan", {
       method: "POST",
       body: JSON.stringify({ sourceIds: sourceIds ?? [] }),
     });
@@ -150,10 +152,28 @@ export class HttpApiClient implements VmsApiClient {
     const response = await this._request<{ tracks: CropTrack[] }>(
       appendSearch("/api/v1/vision/crop-tracks", {
         sourceId: filter?.sourceId,
+        cameraId: filter?.cameraId,
         label: filter?.label && filter.label !== "all" ? filter.label : undefined,
+        fromAt: filter?.fromAt,
+        toAt: filter?.toAt,
       }),
     );
     return response.tracks;
+  }
+
+  async getCropTrack(trackId: string): Promise<CropTrackDetail | undefined> {
+    try {
+      return await this._request(`/api/v1/vision/crop-tracks/${trackId}`);
+    } catch (error) {
+      if (error instanceof HttpApiError && error.status === 404) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async getSystemSettings(): Promise<SystemSettings> {
+    return this._request("/api/v1/settings");
   }
 
   async _request<T>(path: string, init?: RequestInit): Promise<T> {

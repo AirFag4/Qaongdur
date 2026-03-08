@@ -88,6 +88,16 @@ export const createApiClient = (config?: HttpApiClientConfig): VmsApiClient => {
         () => httpClient.listCropTracks(filter),
         () => mockApiClient.listCropTracks(filter),
       )(),
+    getCropTrack: (trackId) =>
+      withFallback(
+        () => httpClient.getCropTrack(trackId),
+        () => mockApiClient.getCropTrack(trackId),
+      )(),
+    getSystemSettings: () =>
+      withFallback(
+        () => httpClient.getSystemSettings(),
+        () => mockApiClient.getSystemSettings(),
+      )(),
   };
 };
 

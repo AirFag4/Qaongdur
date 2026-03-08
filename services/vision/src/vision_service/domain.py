@@ -11,19 +11,26 @@ def utcnow_iso() -> str:
 
 
 @dataclass(slots=True)
-class MockVideoSource:
+class VisionSource:
     id: str
     site_id: str
     camera_id: str
     camera_name: str
-    file_path: str
     path_name: str
     stream_url: str
-    capture_mode: str
-    duration_sec: float
-    frame_width: int
-    frame_height: int
-    source_fps: float
+    live_stream_url: str | None = None
+    capture_mode: str = "recording-segment"
+    source_kind: str = "rtsp"
+    ingest_mode: str = "pull"
+    health: str = "offline"
+    file_path: str = ""
+    duration_sec: float = 0.0
+    frame_width: int = 0
+    frame_height: int = 0
+    source_fps: float = 0.0
+
+
+MockVideoSource = VisionSource
 
 
 @dataclass(slots=True)

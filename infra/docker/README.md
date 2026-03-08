@@ -49,7 +49,7 @@ Notes:
 - `mock-streamer`
 - `recording-pruner`
 
-The `vision` service is available under the `vision-cpu` profile via `make vision-up`.
+The `vision` and `qdrant` services are available under the `vision-cpu` profile via `make vision-up`.
 The `face-api` service is available under the `face` profile via `make face-up`.
 The `mock-streamer` service now starts with the default `core` stack so local `../Video` clips keep publishing after `make docker-up`.
 Use `make mock-video-up` when you want to rebuild or restart only the mock publisher.
@@ -63,21 +63,22 @@ The `core` stack now supports a real RTSP media path:
 - reconnect or remove a camera from the Devices page as a `site-admin` or `platform-admin`
 - `control-api` persists the camera and programs MediaMTX
 - live monitoring uses MediaMTX HLS
-- playback search returns MediaMTX playback URLs for recorded spans
+- playback search returns browser playback URLs plus downloadable MP4 URLs for recorded spans
 - stored cameras are rehydrated into MediaMTX after a media-relay restart
 
-MediaMTX records short rolling segments in local development so playback becomes available quickly after ingest starts.
+MediaMTX records rolling `60s` segments by default in local development, and the value is now exposed from `.env.example` via `MEDIAMTX_RECORD_SEGMENT_DURATION`.
 The `recording-pruner` sidecar keeps the `mediamtx-recordings` volume within `RECORDING_STORAGE_LIMIT_BYTES`, default `10 GB`, by deleting the oldest segments first.
 
 ## Mock Video Vision
 
-The `vision-cpu` flow now uses the VMS path, not a side-channel file-only path:
+The `vision-cpu` flow now uses finalized recording chunks from the VMS path:
 
-- `control-api` discovers `.mp4` files from the sibling `Video/` directory as system-managed cameras
+- `control-api` discovers supported video files from the sibling `Video/` directory as system-managed cameras
 - `mock-streamer` loops those files into MediaMTX as RTSP paths with the configured `MOCK_VIDEO_PATH_PREFIX`
-- `vision` reads the MediaMTX relay URL for each source and persists metadata plus crop artifacts in the `vision-data` volume
+- `vision` watches `/recordings`, picks up newly finalized chunks, and processes them once with real wall-clock timestamps
 - `vision` installs `supervision` from the vendored `third_party/supervision` submodule and uses `ByteTrack`
 - `face-api` boots the vendored InspireFace runtime from the `third_party/InspireFace` submodule, downloads the `Megatron` pack into its runtime volume when needed, and serves crop-level face embeddings to `vision`
+- `qdrant` stores object and face embeddings from the processed tracks
 
 Start it with:
 
@@ -88,24 +89,29 @@ make vision-up
 
 Current behavior:
 
-- discovers local `.mp4` sources from `../Video`
+- discovers local supported video sources from `../Video`
 - exposes those sources as MediaMTX relay URLs such as `rtsp://mediamtx:8554/mock-video-people-walking`
+- automatically processes finalized recording chunks for any camera path that lands under `/recordings`
 - samples frames at `VISION_SAMPLE_FPS`, constrained to `1-3 fps`
 - detects only `person` and `vehicle`
 - normalizes looped publishers to the configured `MOCK_STREAM_WIDTH`, `MOCK_STREAM_HEIGHT`, and `MOCK_STREAM_FPS` so larger source files such as 4K vehicle clips stay stable
 - stores first, middle, and last crop JPEGs for each closed track
-- uses the middle crop as the representative `/crops` card image while preserving first and last timing metadata
+- uses the middle crop as the representative `/crops` card image while preserving first and last timing metadata plus saved movement points
 - enforces a `VISION_STORAGE_LIMIT_BYTES` artifact budget, default `10 GB`
 - reports detailed face-sidecar state through `VisionPipelineStatus.face`
 - skips VLM
-- exposes status and crop-track endpoints through `control-api`
+- exposes status, source, crop-track, track-detail, and settings endpoints through `control-api`
 
 Current limitation:
 
 - the first `face-api` startup compiles InspireFace from source and may download the `Megatron` model pack, so it can take several minutes before face status becomes available
 - clones that skipped `--recurse-submodules` must run `git submodule update --init --recursive` before building `vision` or `face-api`
 - the first `vision` startup after a rebuild is slower than the earlier scaffold because the image now includes packaged tracking, detector, and embedder dependencies
-- each mock-video job processes the current point in the looping relay for one original file-duration window; it does not restart the publisher from frame zero before every run
+- runtime settings are still env-backed; the Settings page in the web app is a planning surface rather than a live-write control plane today
+- the chunk-processing worker is still single-queue, so high-resolution mock streams can backlog before all sources are processed
+- old mock-track history remains in the SQLite store until it is explicitly filtered or cleaned up
+- Qdrant is wired in, but current live upserts still return `400 Bad Request` and need a follow-up fix before vector storage is healthy
+- face embedding calls can still time out under heavier processing load
 
 ## Mock Streamer
 
@@ -119,10 +125,12 @@ make mock-video-up
 
 The mock streamer now prefers real files from `../Video`:
 
-- `people-walking.mp4` becomes `rtsp://mediamtx:8554/mock-video-people-walking`
-- `vehicles.mp4` becomes `rtsp://mediamtx:8554/mock-video-vehicles`
+- supported formats are `.mp4`, `.webm`, `.mkv`, and `.mov`
+- once custom files are present, the legacy seed clips (`people-walking.mp4`, `vehicles.mp4`) are skipped automatically
+- if the same source exists in multiple containers such as both `.mp4` and `.webm`, only the larger variant is published
+- the generated RTSP path is based on a normalized slug of the source filename
 
-If no `.mp4` files are present, it falls back to a looping synthetic test pattern.
+If no supported video files are present, it falls back to a looping synthetic test pattern.
 
 Fallback onboarding URL:
 

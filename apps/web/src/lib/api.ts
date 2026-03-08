@@ -29,4 +29,6 @@ export const queryKeys = {
   visionSources: ["vision-sources"] as const,
   visionStatus: ["vision-status"] as const,
   cropTracks: (hash: string) => ["crop-tracks", hash] as const,
+  cropTrack: (id: string) => ["crop-track", id] as const,
+  systemSettings: ["system-settings"] as const,
 };

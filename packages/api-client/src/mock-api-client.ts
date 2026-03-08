@@ -2,11 +2,13 @@ import type {
   AlertEvent,
   AlertFilter,
   Camera,
+  CropTrackDetail,
   CropTrack,
   CropTrackFilter,
   CreateCameraInput,
   PlaybackSearchParams,
   PlaybackSegment,
+  SystemSettings,
   VmsApiClient,
   VisionJobStatus,
   VisionPipelineStatus,
@@ -34,41 +36,43 @@ const createSvgDataUrl = (label: string, hue: number) =>
 
 const mockVisionSources: VisionSource[] = [
   {
-    id: "source-mock-video-people-walking",
+    id: "cam-mock-video-people-walking",
     siteId: "site-local-01",
     cameraId: "cam-mock-video-people-walking",
     cameraName: "People Walking",
-    filePath: "/mock-videos/people-walking.mp4",
     pathName: "mock-video-people-walking",
-    streamUrl: "rtsp://mediamtx:8554/mock-video-people-walking",
-    captureMode: "rtsp-relay",
-    durationSec: 44,
-    frameWidth: 1280,
-    frameHeight: 720,
-    sourceFps: 24,
+    relayRtspUrl: "rtsp://mediamtx:8554/mock-video-people-walking",
+    liveStreamUrl: "http://localhost:8888/mock-video-people-walking/index.m3u8",
+    sourceKind: "mock-video",
+    ingestMode: "push",
+    health: "healthy",
     trackCount: 2,
+    processedSegmentCount: 4,
+    latestProcessedAt: new Date(Date.now() - 30_000).toISOString(),
+    lastSegmentAt: new Date(Date.now() - 30_000).toISOString(),
   },
   {
-    id: "source-mock-video-vehicles",
+    id: "cam-mock-video-vehicles",
     siteId: "site-local-01",
     cameraId: "cam-mock-video-vehicles",
     cameraName: "Vehicles",
-    filePath: "/mock-videos/vehicles.mp4",
     pathName: "mock-video-vehicles",
-    streamUrl: "rtsp://mediamtx:8554/mock-video-vehicles",
-    captureMode: "rtsp-relay",
-    durationSec: 35,
-    frameWidth: 1280,
-    frameHeight: 720,
-    sourceFps: 30,
+    relayRtspUrl: "rtsp://mediamtx:8554/mock-video-vehicles",
+    liveStreamUrl: "http://localhost:8888/mock-video-vehicles/index.m3u8",
+    sourceKind: "mock-video",
+    ingestMode: "push",
+    health: "healthy",
     trackCount: 2,
+    processedSegmentCount: 5,
+    latestProcessedAt: new Date(Date.now() - 15_000).toISOString(),
+    lastSegmentAt: new Date(Date.now() - 15_000).toISOString(),
   },
 ];
 
 const mockCropTracks: CropTrack[] = [
   {
     id: "trk-mock-person-1",
-    sourceId: "source-mock-video-people-walking",
+    sourceId: "cam-mock-video-people-walking",
     siteId: "site-local-01",
     cameraId: "cam-mock-video-people-walking",
     cameraName: "People Walking",
@@ -83,22 +87,30 @@ const mockCropTracks: CropTrack[] = [
     firstSeenOffsetLabel: "00:00:04.000",
     middleSeenOffsetLabel: "00:00:08.200",
     lastSeenOffsetLabel: "00:00:12.800",
+    segmentPath: "/recordings/mock-video-people-walking/2026-03-08_12-00-00-000000.mp4",
+    segmentStartAt: new Date(Date.now() - 60_000).toISOString(),
+    segmentDurationSec: 60,
     frameCount: 9,
     sampleFps: 2,
     maxConfidence: 0.94,
     avgConfidence: 0.88,
     embeddingStatus: "fallback",
     embeddingModel: "histogram-fallback",
-    faceStatus: "unavailable",
+    embeddingDim: 64,
+    faceStatus: "ready",
     faceModel: "InspireFace-small",
+    faceDim: 512,
     closedReason: "track-gap",
+    firstPoint: { x: 82, y: 110 },
+    middlePoint: { x: 118, y: 128 },
+    lastPoint: { x: 151, y: 139 },
     firstCropDataUrl: createSvgDataUrl("person first", 205),
     middleCropDataUrl: createSvgDataUrl("person mid", 215),
     lastCropDataUrl: createSvgDataUrl("person last", 225),
   },
   {
     id: "trk-mock-vehicle-1",
-    sourceId: "source-mock-video-vehicles",
+    sourceId: "cam-mock-video-vehicles",
     siteId: "site-local-01",
     cameraId: "cam-mock-video-vehicles",
     cameraName: "Vehicles",
@@ -113,20 +125,58 @@ const mockCropTracks: CropTrack[] = [
     firstSeenOffsetLabel: "00:00:02.000",
     middleSeenOffsetLabel: "00:00:06.900",
     lastSeenOffsetLabel: "00:00:14.000",
+    segmentPath: "/recordings/mock-video-vehicles/2026-03-08_12-01-00-000000.mp4",
+    segmentStartAt: new Date(Date.now() - 30_000).toISOString(),
+    segmentDurationSec: 60,
     frameCount: 12,
     sampleFps: 2,
     maxConfidence: 0.97,
     avgConfidence: 0.91,
     embeddingStatus: "fallback",
     embeddingModel: "histogram-fallback",
+    embeddingDim: 64,
     faceStatus: "skipped-label",
     faceModel: "InspireFace-small",
+    faceDim: null,
     closedReason: "end-of-source",
+    firstPoint: { x: 73, y: 143 },
+    middlePoint: { x: 136, y: 152 },
+    lastPoint: { x: 190, y: 164 },
     firstCropDataUrl: createSvgDataUrl("vehicle first", 26),
     middleCropDataUrl: createSvgDataUrl("vehicle mid", 36),
     lastCropDataUrl: createSvgDataUrl("vehicle last", 46),
   },
 ];
+
+const mockSystemSettings: SystemSettings = {
+  checkedAt: new Date().toISOString(),
+  auth: {
+    issuer: "http://localhost:8080/realms/qaongdur-dev",
+    audience: "qaongdur-control-api",
+    stepUpAcr: "urn:qaongdur:loa:2",
+    user: {
+      id: "user-mock-admin",
+      username: "pat.admin",
+      displayName: "Pat Admin",
+      email: "pat.admin@example.com",
+      roles: ["platform-admin"],
+      acr: "urn:qaongdur:loa:1",
+    },
+  },
+  recording: {
+    segmentDurationSeconds: 60,
+    playbackPublicUrl: "http://localhost:9996",
+    hlsPublicUrl: "http://localhost:8888",
+  },
+  vision: {
+    serviceUrl: "http://localhost:8010",
+    autoIngest: true,
+    notes: [
+      "Mock settings payload for offline UI development.",
+      "Real runtime settings are env-backed in the backend stack.",
+    ],
+  },
+};
 
 const matchesSearch = (alert: AlertEvent, query?: string) => {
   if (!query?.trim()) {
@@ -364,6 +414,8 @@ export class MockVmsApiClient implements VmsApiClient {
         alerts: Math.floor(base * 5),
         motionScore: Number((0.15 + base * 0.85).toFixed(2)),
         durationSec: (end - start) / 1000,
+        playbackUrl: `http://localhost:9996/get?path=${encodeURIComponent(cameraId)}&start=${encodeURIComponent(new Date(start).toISOString())}&duration=${(end - start) / 1000}`,
+        downloadUrl: `http://localhost:9996/get?path=${encodeURIComponent(cameraId)}&start=${encodeURIComponent(new Date(start).toISOString())}&duration=${(end - start) / 1000}&format=mp4`,
       };
     });
   }
@@ -394,6 +446,7 @@ export class MockVmsApiClient implements VmsApiClient {
     };
     return {
       sampleMode: true,
+      autoIngest: true,
       detector: {
         available: true,
         modelName: "mock-detector",
@@ -403,12 +456,24 @@ export class MockVmsApiClient implements VmsApiClient {
         modelName: "histogram-fallback",
       },
       face: {
-        available: false,
+        available: true,
         enabled: true,
         mode: "remote",
         modelName: "InspireFace-small",
-        detail: "Face service is not enabled in mock mode.",
+        detail: "Mock face service status.",
       },
+      vectorStore: {
+        enabled: true,
+        available: true,
+        provider: "qdrant",
+        detail: "Mock vector store connected.",
+      },
+      sourceSync: {
+        lastSyncedAt: new Date(Date.now() - 5_000).toISOString(),
+        error: null,
+      },
+      queueDepth: 0,
+      sampleFps: 2,
       latestJob,
       storage: {
         usedBytes: 512_000,
@@ -439,11 +504,40 @@ export class MockVmsApiClient implements VmsApiClient {
       if (filter?.sourceId && track.sourceId !== filter.sourceId) {
         return false;
       }
+      if (filter?.cameraId && track.cameraId !== filter.cameraId) {
+        return false;
+      }
       if (filter?.label && filter.label !== "all" && track.label !== filter.label) {
+        return false;
+      }
+      if (filter?.fromAt && new Date(track.lastSeenAt).getTime() < new Date(filter.fromAt).getTime()) {
+        return false;
+      }
+      if (filter?.toAt && new Date(track.firstSeenAt).getTime() > new Date(filter.toAt).getTime()) {
         return false;
       }
       return true;
     });
+  }
+
+  async getCropTrack(trackId: string): Promise<CropTrackDetail | undefined> {
+    await sleep(networkDelay());
+    const track = mockCropTracks.find((item) => item.id === trackId);
+    if (!track) {
+      return undefined;
+    }
+    return {
+      ...track,
+      firstBBox: [20, 40, 120, 220],
+      middleBBox: [42, 48, 136, 228],
+      lastBBox: [60, 52, 152, 236],
+      createdAt: new Date(Date.now() - 25_000).toISOString(),
+    };
+  }
+
+  async getSystemSettings(): Promise<SystemSettings> {
+    await sleep(networkDelay());
+    return mockSystemSettings;
   }
 }
 

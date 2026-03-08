@@ -31,6 +31,7 @@ class RecordingSpan:
     start: str
     duration: float
     playback_url: str
+    download_url: str
 
 
 class MediaMtxClient:
@@ -167,6 +168,12 @@ class MediaMtxClient:
                     start=item["start"],
                     duration=float(item["duration"]),
                 ),
+                download_url=self.build_playback_url(
+                    path_name=path_name,
+                    start=item["start"],
+                    duration=float(item["duration"]),
+                    format_name="mp4",
+                ),
             )
             for item in spans
         ]
@@ -174,8 +181,22 @@ class MediaMtxClient:
     def build_hls_url(self, path_name: str) -> str:
         return f"{self._hls_public_url}/{path_name}/index.m3u8"
 
-    def build_playback_url(self, *, path_name: str, start: str, duration: float) -> str:
-        return f"{self._playback_public_url}/get?{urlencode({'path': path_name, 'start': start, 'duration': duration, 'format': 'mp4'})}"
+    def build_playback_url(
+        self,
+        *,
+        path_name: str,
+        start: str,
+        duration: float,
+        format_name: str | None = None,
+    ) -> str:
+        params: dict[str, str | float] = {
+            "path": path_name,
+            "start": start,
+            "duration": duration,
+        }
+        if format_name:
+            params["format"] = format_name
+        return f"{self._playback_public_url}/get?{urlencode(params)}"
 
 
 def path_state_to_health(path_state: PathState | None) -> str:

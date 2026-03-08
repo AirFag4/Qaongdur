@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Badge } from "@qaongdur/ui";
 import type { RealtimeEvent } from "@qaongdur/types";
 import { Card, CardDescription, CardTitle } from "@qaongdur/ui";
@@ -6,7 +6,6 @@ import { Button } from "@qaongdur/ui";
 import { RoleGate } from "../auth/role-gate";
 import { useAuth } from "../auth/use-auth";
 import {
-  fetchControlApiAuthStatus,
   requestDestructivePurge,
   requestEvidenceExport,
 } from "../lib/control-api";
@@ -14,15 +13,6 @@ import {
 export function AgentChatRail({ recentEvents }: { recentEvents: RealtimeEvent[] }) {
   const auth = useAuth();
   const accessToken = auth.session?.accessToken;
-
-  const controlApiStatus = useQuery({
-    queryKey: ["control-api-auth", auth.session?.user.id],
-    queryFn: () => fetchControlApiAuthStatus(accessToken!),
-    enabled: Boolean(accessToken),
-    retry: 1,
-    staleTime: 60_000,
-  });
-
   const exportMutation = useMutation({
     mutationFn: () => requestEvidenceExport(accessToken!),
   });
@@ -33,58 +23,13 @@ export function AgentChatRail({ recentEvents }: { recentEvents: RealtimeEvent[] 
 
   return (
     <div className="flex h-full flex-col gap-3">
-      <Card className="space-y-3">
-        <div className="flex items-center justify-between">
-          <CardTitle>Authenticated Session</CardTitle>
-          <Badge tone="cyan">In App</Badge>
-        </div>
-        <div className="space-y-1 text-xs text-stone-300">
-          <p className="font-medium text-stone-100">{auth.session?.user.displayName}</p>
-          <p>{auth.session?.user.email ?? auth.session?.user.username}</p>
-          <div className="flex flex-wrap gap-2 pt-1">
-            {(auth.session?.user.roles ?? []).map((role) => (
-              <Badge key={role} tone="stone">
-                {role}
-              </Badge>
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="secondary" onClick={() => void auth.registerPasskey()}>
-            Register Passkey
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => void auth.requestStepUp("sensitive-agent-action")}
-          >
-            Step-Up Reauth
-          </Button>
-        </div>
-        <div className="rounded-md border border-stone-700 bg-stone-950/60 p-2 text-xs text-stone-400">
-          {controlApiStatus.isSuccess ? (
-            <p>
-              Control API validated this browser token for audience{" "}
-              <span className="font-mono text-stone-300">
-                {controlApiStatus.data.audience}
-              </span>
-              .
-            </p>
-          ) : controlApiStatus.isError ? (
-            <p>Control API check unavailable. Start `services/control-api` to verify JWTs end to end.</p>
-          ) : (
-            <p>Checking backend token validation...</p>
-          )}
-        </div>
-      </Card>
-
       <Card className="space-y-2">
         <div className="flex items-center justify-between">
           <CardTitle>Agent Assistant</CardTitle>
           <Badge tone="cyan">Reserved</Badge>
         </div>
         <CardDescription>
-          This panel is reserved for in-app incident chat and tool approvals.
+          This panel stays focused on agent and realtime tools. Auth controls were moved to Settings.
         </CardDescription>
         <div className="space-y-2 rounded-md border border-stone-700 bg-stone-950/60 p-2 text-xs text-stone-400">
           <p>Suggested prompts:</p>

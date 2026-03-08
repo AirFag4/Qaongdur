@@ -8,41 +8,10 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .config import get_settings
-from .demo_data import DEMO_PIPELINES
 from .pipeline import VisionPipelineService
 
 
-class DemoDetection(BaseModel):
-    label: str
-    confidence: float
-    severity: str
-    boundingBox: dict[str, int]
-
-
-class DemoAlert(BaseModel):
-    title: str
-    rule: str
-    severity: str
-
-
-class DemoInferenceResult(BaseModel):
-    sourceId: str
-    siteId: str
-    cameraId: str
-    summary: str
-    detections: list[DemoDetection]
-    recommendedAlert: DemoAlert
-    capturedAt: str
-
-
-class DemoRunRequest(BaseModel):
-    sourceId: str = Field(
-        default="demo-loading-dock",
-        description="Seeded demo source configured inside the vision scaffold.",
-    )
-
-
-class MockJobRunRequest(BaseModel):
+class SegmentScanRequest(BaseModel):
     sourceIds: list[str] = Field(default_factory=list)
 
 
@@ -57,7 +26,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Qaongdur Vision Service",
         version="0.1.0",
-        summary="Demo-ready vision pipeline scaffold for Qaongdur",
+        summary="Segment-driven vision pipeline for Qaongdur",
     )
 
     @app.get("/healthz")
@@ -69,56 +38,61 @@ def create_app() -> FastAPI:
         return {
             "status": "ok",
             "service": "vision",
-            "sampleMode": settings.sample_mode,
+            "autoIngest": True,
             "checkedAt": datetime.now(tz=UTC).isoformat(),
         }
 
-    @app.get("/api/v1/vision/mock-sources")
-    async def list_mock_sources() -> dict[str, object]:
+    @app.get("/api/v1/vision/sources")
+    async def list_sources() -> dict[str, object]:
+        sources = pipeline.list_sources()
         return {
-            "count": len(pipeline.list_sources()),
-            "sources": pipeline.list_sources(),
+            "count": len(sources),
+            "sources": sources,
         }
+
+    @app.get("/api/v1/vision/mock-sources")
+    async def list_sources_legacy() -> dict[str, object]:
+        return await list_sources()
 
     @app.get("/api/v1/vision/status")
     async def get_vision_status() -> dict[str, object]:
         return pipeline.get_status()
 
+    @app.post("/api/v1/vision/scan")
+    async def run_segment_scan(body: SegmentScanRequest) -> dict[str, object]:
+        del body
+        return pipeline.start_job()
+
     @app.post("/api/v1/vision/mock-jobs/run")
-    async def run_mock_job(body: MockJobRunRequest) -> dict[str, object]:
-        if not settings.sample_mode:
-            raise HTTPException(status_code=503, detail="Mock mode is disabled.")
-        return pipeline.start_job(source_ids=body.sourceIds or None)
+    async def run_segment_scan_legacy(body: SegmentScanRequest) -> dict[str, object]:
+        return await run_segment_scan(body)
 
     @app.get("/api/v1/vision/crop-tracks")
     async def list_crop_tracks(
         sourceId: str | None = None,
+        cameraId: str | None = None,
         label: str | None = Query(default=None, pattern="^(person|vehicle|all)?$"),
+        fromAt: str | None = None,
+        toAt: str | None = None,
     ) -> dict[str, object]:
-        tracks = pipeline.list_crop_tracks(source_id=sourceId, label=label)
+        tracks = pipeline.list_crop_tracks(
+            source_id=sourceId,
+            camera_id=cameraId,
+            label=label,
+            from_at=fromAt,
+            to_at=toAt,
+        )
         return {
             "count": len(tracks),
             "tracks": tracks,
         }
 
-    @app.get("/api/v1/vision/pipelines")
-    async def list_demo_pipelines() -> dict[str, object]:
-        return {
-            "sampleMode": settings.sample_mode,
-            "count": len(DEMO_PIPELINES),
-            "pipelines": DEMO_PIPELINES,
-        }
-
-    @app.post("/api/v1/vision/demo/run")
-    async def run_demo_pipeline(body: DemoRunRequest) -> DemoInferenceResult:
-        if not settings.sample_mode:
-            raise HTTPException(status_code=503, detail="Demo mode is disabled.")
-
-        for pipeline in DEMO_PIPELINES:
-            if pipeline["sourceId"] == body.sourceId:
-                return DemoInferenceResult(**pipeline)
-
-        raise HTTPException(status_code=404, detail="Unknown demo source.")
+    @app.get("/api/v1/vision/crop-tracks/{track_id}")
+    async def get_crop_track(track_id: str) -> dict[str, object]:
+        track = pipeline.get_crop_track(track_id)
+        if track is None:
+            raise HTTPException(status_code=404, detail=f"Track {track_id} was not found.")
+        return track
 
     return app
 

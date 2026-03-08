@@ -1,7 +1,7 @@
 # Qaongdur Monorepo
 
 Docker-first VMS + Vision AI + Agent AI project.  
-The repo now includes the initial monorepo structure, the first frontend web console, Keycloak-based auth foundations, the first real backend slice for RTSP camera onboarding, live HLS, and playback search through MediaMTX, and a VMS-backed mock-video vision path that treats the sibling `../Video` files as looped RTSP cameras.
+The repo now includes the initial monorepo structure, the frontend web console, Keycloak-based auth foundations, real RTSP onboarding plus live HLS and playback through MediaMTX, and a segment-driven vision path that processes finalized recording chunks with real timestamps instead of replaying the original mock files directly.
 
 Clone with submodules for the full vision stack:
 
@@ -43,10 +43,12 @@ Current behavior in this mode:
 - Keycloak, control-api, Postgres, Redis, object storage, MediaMTX, `mock-streamer`, and the built web app all run in containers
 - auth is real
 - camera inventory, device inventory, live tiles, overview metrics, RTSP onboarding, and playback search use the real `control-api`
-- if the sibling `../Video` directory contains `.mp4` files, `mock-streamer` publishes them into MediaMTX as looped RTSP cameras such as `mock-video-people-walking` and `mock-video-vehicles`
+- if the sibling `../Video` directory contains supported video files (`.mp4`, `.webm`, `.mkv`, `.mov`), `mock-streamer` publishes them into MediaMTX as looped RTSP cameras
+- once you add your own files into `../Video`, the old small seed clips (`people-walking.mp4`, `vehicles.mp4`) are ignored automatically
+- the Settings page centralizes auth/session actions and exposes the current runtime defaults for recording and vision
 - site-admin and platform-admin users can reconnect or remove cameras from the Devices page
 - RTSP onboarding supports MediaMTX source transport selection (`automatic`, `udp`, `tcp`, `multicast`) plus optional `rtspAnyPort` compatibility mode
-- MediaMTX records rolling segments and serves playback URLs for finalized recordings
+- MediaMTX records rolling segments, defaults to `60s` chunks in `.env.example`, and serves browser playback plus downloadable MP4 URLs for finalized recordings
 - the local recording volume is pruned oldest-first to stay within the configured `RECORDING_STORAGE_LIMIT_BYTES` budget, default `10 GB`
 - alerts and incidents are still placeholder backend responses rather than a full detection-to-incident pipeline
 
@@ -59,16 +61,18 @@ make vision-up
 
 Current behavior in this mode:
 
-- `make vision-up` starts the `vision`, `face-api`, and `mock-streamer` services together with the shared runtime dependencies they need
+- `make vision-up` starts `vision`, `face-api`, `qdrant`, and `mock-streamer` together with the shared runtime dependencies they need
 - `control-api` discovers the sibling `../Video` files as system-managed cameras and exposes them through the same camera and device APIs used by the web app
-- `mock-streamer` loops those `.mp4` files into MediaMTX as RTSP paths such as `mock-video-people-walking` and `mock-video-vehicles`
-- `services/vision` mounts the same `../Video` directory for source metadata, but analytics now reads the MediaMTX relay URL for each mock source instead of processing the file path directly
+- `mock-streamer` loops supported video files (`.mp4`, `.webm`, `.mkv`, `.mov`) into MediaMTX as RTSP paths
+- if the same source exists in multiple containers, such as both `.mp4` and `.webm`, the larger file wins and only one mock camera path is published for that stem
+- `services/vision` watches finalized MediaMTX recording chunks under `/recordings` and automatically processes every available recorded source instead of manual file-triggered jobs
 - the detector keeps only `person` and `vehicle`
 - track association now uses `supervision` `ByteTrack` from the vendored `third_party/supervision` submodule
 - tracks are sampled at `1-3 fps` per source, default `2 fps`
-- the new `/crops` page shows a fixed-aspect representative middle crop for each completed track while retaining first and last sighting metadata
+- the `/crops` page now supports time-range search, track selection, and movement-point detail for first, middle, and last saved observations
 - embeddings are computed from object crops only
 - the face stage only attempts one embedding per person track after the minimum dwell window
+- object and face embeddings are written into Qdrant collections for vector storage
 - face embeddings are delegated to a separate `face-api` sidecar that bootstraps InspireFace from the vendored `third_party/InspireFace` submodule and hydrates the `Megatron` resource pack into the persistent runtime volume
 - the first `face-api` startup compiles the vendored InspireFace runtime and downloads the `Megatron` pack inside the container, so it can take several minutes
 - the first `vision` startup after a clean rebuild can take longer than the earlier scaffold because detector and embedder runtimes are installed in the image
@@ -80,7 +84,7 @@ Targeted mock-video publisher restart only:
 make mock-video-up
 ```
 
-If `../Video` contains no `.mp4` files, the publisher falls back to a synthetic test source:
+If `../Video` contains no supported video files, the publisher falls back to a synthetic test source:
 
 - `rtsp://mediamtx:8554/mock-demo`
 
@@ -217,10 +221,15 @@ Implemented the first real Task 03 vision-processing path:
 
 Current limitations of this slice:
 
-- crop embeddings are persisted in SQLite tables shaped for a later Postgres plus `pgvector` migration, not a full vector index yet
+- track metadata still lives in the local SQLite store inside `vision`; only the embedding vectors are pushed into Qdrant
+- writable runtime settings are not implemented yet; the new Settings page is the planning surface and shows env-backed defaults
 - ROI filtering is only designed at the schema level for now
 - the first `face-api` startup compiles the vendored InspireFace runtime from `third_party/InspireFace` and downloads the `Megatron` pack into the runtime volume, so the face stage can report `service-unreachable` or `service-not-ready` until that bootstrap finishes
 - each mock-video job processes one file-duration window from the current live loop; it does not reset the publisher to the exact beginning of the source file before every run
+- the recorded-chunk worker currently runs as a single queue, so larger 4K mock sources can build backlog before all streams are processed
+- old historical mock-track rows remain visible unless they are filtered or purged, even after the active mock source set changes
+- Qdrant wiring is present, but current live upserts still need a follow-up fix before vector storage can be treated as healthy
+- the face sidecar can still time out under load even when it reports healthy at startup
 
 ## For Developers
 
@@ -259,6 +268,10 @@ What `03 + core 05` means in practice:
 - keep MediaMTX as the relay and playback edge, but remove JSON-file state from `control-api` once database-backed persistence is ready
 - migrate the current SQLite-backed track and embedding store into Postgres plus `pgvector` once the wider Task 03 schema is ready
 - reduce the first-boot cost of the InspireFace sidecar by moving from runtime compilation to a more reproducible packaged build path
+
+Detailed follow-up backlog:
+
+- [`docs/todo-next.md`](docs/todo-next.md)
 
 ### Planned NVR Direction
 

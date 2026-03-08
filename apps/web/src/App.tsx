@@ -10,6 +10,7 @@ import { IncidentDetailPage } from "./pages/incident-detail-page";
 import { LiveMonitoringPage } from "./pages/live-monitoring-page";
 import { OverviewPage } from "./pages/overview-page";
 import { PlaybackSearchPage } from "./pages/playback-search-page";
+import { SettingsPage } from "./pages/settings-page";
 
 function App() {
   const auth = useAuth();
@@ -37,6 +38,7 @@ function App() {
         <Route path="playback" element={<PlaybackSearchPage />} />
         <Route path="crops" element={<CropGalleryPage />} />
         <Route path="devices" element={<DevicesPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

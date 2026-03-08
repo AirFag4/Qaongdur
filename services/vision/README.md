@@ -1,6 +1,6 @@
 # vision
 
-FastAPI vision service for mock-video processing, crop persistence, and future AI enrichment stages.
+FastAPI vision service for automatic recorded-segment processing, crop persistence, and future AI enrichment stages.
 
 ## Local Setup
 
@@ -28,19 +28,20 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 
 - `GET /healthz`
 - `GET /readyz`
+- `GET /api/v1/vision/sources`
 - `GET /api/v1/vision/mock-sources`
 - `GET /api/v1/vision/status`
+- `POST /api/v1/vision/scan`
 - `POST /api/v1/vision/mock-jobs/run`
 - `GET /api/v1/vision/crop-tracks`
-- `GET /api/v1/vision/pipelines`
-- `POST /api/v1/vision/demo/run`
+- `GET /api/v1/vision/crop-tracks/{track_id}`
 
 ## Current Mock-Video Flow
 
 - input files come from the sibling `Video/` directory mounted at `/mock-videos` in Compose
-- `control-api` and `mock-streamer` turn those files into system-managed RTSP cameras under MediaMTX, for example `rtsp://mediamtx:8554/mock-video-people-walking`
-- `services/vision` reads the MediaMTX relay URL for each mock source instead of processing the file path directly
-- each job is bounded to one original file-duration window even though the publisher loops forever
+- `control-api` and `mock-streamer` turn those files into system-managed RTSP cameras under MediaMTX
+- `services/vision` watches finalized MediaMTX chunks under `/recordings` and processes recorded segments instead of reading the file path directly
+- each job is bounded to one finalized recording chunk and stores real wall-clock timestamps derived from the chunk start time
 - the detector keeps only `person` and `vehicle`
 - track association uses `supervision.ByteTrack`
 - tracks are sampled at `1-3 fps`, default `2 fps`
@@ -58,6 +59,9 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 - the first `face-api` start compiles InspireFace from the vendored `third_party/InspireFace` submodule and may download the `Megatron` pack into `/runtime`, so the face stage can report `service-unreachable` or `service-not-ready` until that bootstrap completes
 - clones that skipped submodule initialization must run `git submodule update --init --recursive` before rebuilding the `face-api` or `vision` images
 - the job processes the current point in each looping relay, not a hard reset to the exact beginning of the source file
+- the current worker is single-queue, so larger 4K mock sources can accumulate backlog before all sources are processed
 - VLM is skipped
-- the embedding store is not a full vector index yet; it is shaped for a later Postgres plus `pgvector` migration
+- track metadata is still persisted in the local SQLite store, while Qdrant upserts still need a follow-up fix before vector storage is fully healthy
 - ROI filtering is a future schema feature, not part of the current processing loop
+- historical tracks from retired mock sources remain in the SQLite store until explicit cleanup or source-retirement logic is added
+- face calls can still time out under heavier load even though the sidecar is healthy

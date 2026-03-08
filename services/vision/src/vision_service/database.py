@@ -16,12 +16,19 @@ CREATE TABLE IF NOT EXISTS video_source (
   site_id TEXT NOT NULL,
   camera_id TEXT NOT NULL,
   camera_name TEXT NOT NULL,
-  file_path TEXT NOT NULL,
-  duration_sec REAL NOT NULL,
-  frame_width INTEGER NOT NULL,
-  frame_height INTEGER NOT NULL,
-  source_fps REAL NOT NULL,
-  updated_at TEXT NOT NULL
+  path_name TEXT NOT NULL DEFAULT '',
+  stream_url TEXT NOT NULL DEFAULT '',
+  live_stream_url TEXT,
+  health TEXT NOT NULL DEFAULT 'offline',
+  source_kind TEXT NOT NULL DEFAULT 'rtsp',
+  ingest_mode TEXT NOT NULL DEFAULT 'pull',
+  file_path TEXT NOT NULL DEFAULT '',
+  duration_sec REAL NOT NULL DEFAULT 0,
+  frame_width INTEGER NOT NULL DEFAULT 0,
+  frame_height INTEGER NOT NULL DEFAULT 0,
+  source_fps REAL NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  last_segment_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS processing_job (
@@ -33,6 +40,23 @@ CREATE TABLE IF NOT EXISTS processing_job (
   started_at TEXT NOT NULL,
   finished_at TEXT,
   detail TEXT
+);
+
+CREATE TABLE IF NOT EXISTS recording_segment (
+  segment_path TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL REFERENCES video_source(id) ON DELETE CASCADE,
+  path_name TEXT NOT NULL,
+  camera_id TEXT NOT NULL,
+  camera_name TEXT NOT NULL,
+  segment_start_at TEXT NOT NULL,
+  segment_end_at TEXT,
+  duration_sec REAL,
+  byte_size INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL,
+  job_id TEXT REFERENCES processing_job(id) ON DELETE SET NULL,
+  detail TEXT,
+  created_at TEXT NOT NULL,
+  processed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS track (
@@ -50,6 +74,9 @@ CREATE TABLE IF NOT EXISTS track (
   first_seen_offset_ms INTEGER NOT NULL,
   middle_seen_offset_ms INTEGER NOT NULL,
   last_seen_offset_ms INTEGER NOT NULL,
+  segment_path TEXT,
+  segment_start_at TEXT,
+  segment_duration_sec REAL,
   frame_count INTEGER NOT NULL,
   sample_fps REAL NOT NULL,
   max_confidence REAL NOT NULL,
@@ -57,6 +84,9 @@ CREATE TABLE IF NOT EXISTS track (
   first_bbox_json TEXT NOT NULL,
   middle_bbox_json TEXT NOT NULL,
   last_bbox_json TEXT NOT NULL,
+  first_point_json TEXT,
+  middle_point_json TEXT,
+  last_point_json TEXT,
   embedding_status TEXT NOT NULL,
   embedding_model TEXT,
   embedding_dim INTEGER,
@@ -92,6 +122,10 @@ CREATE TABLE IF NOT EXISTS track_face_embedding (
   vector_json TEXT,
   created_at TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_track_last_seen_at ON track(last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_track_camera_time ON track(camera_id, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_segment_source_time ON recording_segment(source_id, segment_start_at DESC);
 """
 
 
@@ -102,6 +136,7 @@ class VisionRepository:
         self._lock = Lock()
         with self._connect() as connection:
             connection.executescript(SCHEMA)
+            self._migrate(connection)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
@@ -112,27 +147,66 @@ class VisionRepository:
         connection.execute("PRAGMA foreign_keys=ON")
         return connection
 
-    def upsert_sources(self, sources: list[dict[str, Any]]) -> None:
+    def _migrate(self, connection: sqlite3.Connection) -> None:
+        self._ensure_column(connection, "video_source", "path_name", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column(connection, "video_source", "stream_url", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column(connection, "video_source", "live_stream_url", "TEXT")
+        self._ensure_column(connection, "video_source", "health", "TEXT NOT NULL DEFAULT 'offline'")
+        self._ensure_column(connection, "video_source", "source_kind", "TEXT NOT NULL DEFAULT 'rtsp'")
+        self._ensure_column(connection, "video_source", "ingest_mode", "TEXT NOT NULL DEFAULT 'pull'")
+        self._ensure_column(connection, "video_source", "last_segment_at", "TEXT")
+        self._ensure_column(connection, "track", "segment_path", "TEXT")
+        self._ensure_column(connection, "track", "segment_start_at", "TEXT")
+        self._ensure_column(connection, "track", "segment_duration_sec", "REAL")
+        self._ensure_column(connection, "track", "first_point_json", "TEXT")
+        self._ensure_column(connection, "track", "middle_point_json", "TEXT")
+        self._ensure_column(connection, "track", "last_point_json", "TEXT")
+
+    def _ensure_column(
+        self,
+        connection: sqlite3.Connection,
+        table_name: str,
+        column_name: str,
+        definition: str,
+    ) -> None:
+        columns = {
+            row["name"]
+            for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        if column_name in columns:
+            return
+        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+    def sync_sources(self, sources: list[dict[str, Any]]) -> None:
         with self._lock, self._connect() as connection:
             connection.executemany(
                 """
                 INSERT INTO video_source (
-                  id, site_id, camera_id, camera_name, file_path, duration_sec,
-                  frame_width, frame_height, source_fps, updated_at
+                  id, site_id, camera_id, camera_name, path_name, stream_url, live_stream_url,
+                  health, source_kind, ingest_mode, file_path, duration_sec, frame_width,
+                  frame_height, source_fps, updated_at, last_segment_at
                 ) VALUES (
-                  :id, :site_id, :camera_id, :camera_name, :file_path, :duration_sec,
-                  :frame_width, :frame_height, :source_fps, :updated_at
+                  :id, :site_id, :camera_id, :camera_name, :path_name, :stream_url, :live_stream_url,
+                  :health, :source_kind, :ingest_mode, :file_path, :duration_sec, :frame_width,
+                  :frame_height, :source_fps, :updated_at, :last_segment_at
                 )
                 ON CONFLICT(id) DO UPDATE SET
                   site_id=excluded.site_id,
                   camera_id=excluded.camera_id,
                   camera_name=excluded.camera_name,
+                  path_name=excluded.path_name,
+                  stream_url=excluded.stream_url,
+                  live_stream_url=excluded.live_stream_url,
+                  health=excluded.health,
+                  source_kind=excluded.source_kind,
+                  ingest_mode=excluded.ingest_mode,
                   file_path=excluded.file_path,
                   duration_sec=excluded.duration_sec,
                   frame_width=excluded.frame_width,
                   frame_height=excluded.frame_height,
                   source_fps=excluded.source_fps,
-                  updated_at=excluded.updated_at
+                  updated_at=excluded.updated_at,
+                  last_segment_at=COALESCE(video_source.last_segment_at, excluded.last_segment_at)
                 """,
                 sources,
             )
@@ -143,14 +217,26 @@ class VisionRepository:
                 """
                 SELECT
                   source.*,
-                  COUNT(track.id) AS track_count
+                  COUNT(DISTINCT track.id) AS track_count,
+                  COUNT(DISTINCT CASE WHEN segment.status = 'processed' THEN segment.segment_path END)
+                    AS processed_segment_count,
+                  MAX(segment.processed_at) AS latest_processed_at
                 FROM video_source AS source
                 LEFT JOIN track ON track.source_id = source.id
+                LEFT JOIN recording_segment AS segment ON segment.source_id = source.id
                 GROUP BY source.id
                 ORDER BY source.camera_name ASC
                 """
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def get_source_by_path_name(self, path_name: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM video_source WHERE path_name = ? LIMIT 1",
+                (path_name,),
+            ).fetchone()
+        return dict(row) if row else None
 
     def create_job(
         self,
@@ -229,25 +315,109 @@ class VisionRepository:
             "detail": row["detail"],
         }
 
-    def delete_tracks_for_sources(self, source_ids: list[str]) -> list[str]:
-        if not source_ids:
-            return []
-        placeholders = ",".join(["?"] * len(source_ids))
+    def register_segment(
+        self,
+        *,
+        segment_path: str,
+        source_id: str,
+        path_name: str,
+        camera_id: str,
+        camera_name: str,
+        segment_start_at: str,
+        byte_size: int,
+        created_at: str,
+    ) -> bool:
         with self._lock, self._connect() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT artifact.relative_path
-                FROM storage_artifact AS artifact
-                JOIN track ON track.id = artifact.track_id
-                WHERE track.source_id IN ({placeholders})
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO recording_segment (
+                  segment_path, source_id, path_name, camera_id, camera_name,
+                  segment_start_at, byte_size, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
                 """,
-                source_ids,
-            ).fetchall()
-            connection.execute(
-                f"DELETE FROM track WHERE source_id IN ({placeholders})",
-                source_ids,
+                (
+                    segment_path,
+                    source_id,
+                    path_name,
+                    camera_id,
+                    camera_name,
+                    segment_start_at,
+                    byte_size,
+                    created_at,
+                ),
             )
-        return [row["relative_path"] for row in rows]
+        return cursor.rowcount > 0
+
+    def mark_segment_processing(
+        self,
+        *,
+        segment_path: str,
+        job_id: str,
+    ) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE recording_segment
+                SET status = 'processing', job_id = ?, detail = NULL
+                WHERE segment_path = ?
+                """,
+                (job_id, segment_path),
+            )
+
+    def mark_segment_processed(
+        self,
+        *,
+        segment_path: str,
+        processed_at: str,
+        duration_sec: float,
+        segment_end_at: str,
+        track_count: int,
+    ) -> None:
+        with self._lock, self._connect() as connection:
+            source_row = connection.execute(
+                "SELECT source_id FROM recording_segment WHERE segment_path = ?",
+                (segment_path,),
+            ).fetchone()
+            connection.execute(
+                """
+                UPDATE recording_segment
+                SET status = 'processed',
+                    processed_at = ?,
+                    duration_sec = ?,
+                    segment_end_at = ?,
+                    detail = ?
+                WHERE segment_path = ?
+                """,
+                (
+                    processed_at,
+                    duration_sec,
+                    segment_end_at,
+                    f"{track_count} tracks",
+                    segment_path,
+                ),
+            )
+            if source_row is not None:
+                connection.execute(
+                    "UPDATE video_source SET last_segment_at = ? WHERE id = ?",
+                    (processed_at, source_row["source_id"]),
+                )
+
+    def mark_segment_failed(
+        self,
+        *,
+        segment_path: str,
+        processed_at: str,
+        detail: str,
+    ) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE recording_segment
+                SET status = 'failed', processed_at = ?, detail = ?
+                WHERE segment_path = ?
+                """,
+                (processed_at, detail[:1000], segment_path),
+            )
 
     def used_storage_bytes(self) -> int:
         with self._connect() as connection:
@@ -301,16 +471,20 @@ class VisionRepository:
                   id, job_id, source_id, site_id, camera_id, camera_name, label,
                   detector_label, first_seen_at, middle_seen_at, last_seen_at,
                   first_seen_offset_ms, middle_seen_offset_ms, last_seen_offset_ms,
+                  segment_path, segment_start_at, segment_duration_sec,
                   frame_count, sample_fps, max_confidence, avg_confidence,
                   first_bbox_json, middle_bbox_json, last_bbox_json,
+                  first_point_json, middle_point_json, last_point_json,
                   embedding_status, embedding_model, embedding_dim,
                   face_status, face_model, face_dim, closed_reason, created_at
                 ) VALUES (
                   :id, :job_id, :source_id, :site_id, :camera_id, :camera_name, :label,
                   :detector_label, :first_seen_at, :middle_seen_at, :last_seen_at,
                   :first_seen_offset_ms, :middle_seen_offset_ms, :last_seen_offset_ms,
+                  :segment_path, :segment_start_at, :segment_duration_sec,
                   :frame_count, :sample_fps, :max_confidence, :avg_confidence,
                   :first_bbox_json, :middle_bbox_json, :last_bbox_json,
+                  :first_point_json, :middle_point_json, :last_point_json,
                   :embedding_status, :embedding_model, :embedding_dim,
                   :face_status, :face_model, :face_dim, :closed_reason, :created_at
                 )
@@ -332,7 +506,7 @@ class VisionRepository:
             if embedding is not None:
                 connection.execute(
                     """
-                    INSERT INTO track_embedding (
+                    INSERT OR REPLACE INTO track_embedding (
                       track_id, model_name, vector_json, created_at
                     ) VALUES (
                       :track_id, :model_name, :vector_json, :created_at
@@ -343,7 +517,7 @@ class VisionRepository:
             if face_embedding is not None:
                 connection.execute(
                     """
-                    INSERT INTO track_face_embedding (
+                    INSERT OR REPLACE INTO track_face_embedding (
                       track_id, model_name, vector_json, created_at
                     ) VALUES (
                       :track_id, :model_name, :vector_json, :created_at
@@ -356,16 +530,28 @@ class VisionRepository:
         self,
         *,
         source_id: str | None = None,
+        camera_id: str | None = None,
         label: str | None = None,
+        from_at: str | None = None,
+        to_at: str | None = None,
     ) -> list[dict[str, Any]]:
         conditions: list[str] = []
         params: list[Any] = []
         if source_id:
             conditions.append("track.source_id = ?")
             params.append(source_id)
+        if camera_id:
+            conditions.append("track.camera_id = ?")
+            params.append(camera_id)
         if label and label != "all":
             conditions.append("track.label = ?")
             params.append(label)
+        if from_at:
+            conditions.append("track.last_seen_at >= ?")
+            params.append(from_at)
+        if to_at:
+            conditions.append("track.first_seen_at <= ?")
+            params.append(to_at)
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         with self._connect() as connection:
             track_rows = connection.execute(
@@ -377,25 +563,51 @@ class VisionRepository:
                 """,
                 params,
             ).fetchall()
-            result: list[dict[str, Any]] = []
-            for track_row in track_rows:
-                asset_rows = connection.execute(
-                    """
-                    SELECT role, relative_path
-                    FROM storage_artifact
-                    WHERE track_id = ?
-                    ORDER BY created_at ASC
-                    """,
-                    (track_row["id"],),
-                ).fetchall()
-                assets = {asset["role"]: asset["relative_path"] for asset in asset_rows}
-                result.append(
-                    {
-                        **dict(track_row),
-                        "assets": assets,
-                    }
-                )
-        return result
+            return [self._hydrate_track(connection, dict(track_row)) for track_row in track_rows]
+
+    def get_crop_track(self, track_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            track_row = connection.execute(
+                "SELECT * FROM track WHERE id = ? LIMIT 1",
+                (track_id,),
+            ).fetchone()
+            if track_row is None:
+                return None
+            return self._hydrate_track(connection, dict(track_row))
+
+    def _hydrate_track(
+        self,
+        connection: sqlite3.Connection,
+        track_row: dict[str, Any],
+    ) -> dict[str, Any]:
+        asset_rows = connection.execute(
+            """
+            SELECT role, relative_path
+            FROM storage_artifact
+            WHERE track_id = ?
+            ORDER BY created_at ASC
+            """,
+            (track_row["id"],),
+        ).fetchall()
+        embedding_row = connection.execute(
+            "SELECT model_name, vector_json FROM track_embedding WHERE track_id = ?",
+            (track_row["id"],),
+        ).fetchone()
+        face_row = connection.execute(
+            "SELECT model_name, vector_json FROM track_face_embedding WHERE track_id = ?",
+            (track_row["id"],),
+        ).fetchone()
+        assets = {asset["role"]: asset["relative_path"] for asset in asset_rows}
+        return {
+            **track_row,
+            "assets": assets,
+            "embedding_vector_dim": (
+                len(json.loads(embedding_row["vector_json"])) if embedding_row else None
+            ),
+            "face_vector_dim": len(json.loads(face_row["vector_json"]))
+            if face_row and face_row["vector_json"]
+            else None,
+        }
 
     def storage_status(self, storage_limit_bytes: int) -> dict[str, Any]:
         with self._connect() as connection:

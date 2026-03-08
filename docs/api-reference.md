@@ -69,12 +69,14 @@ The frontend only talks to the data layer through this interface:
 | `listAlerts(filter?)` | `AlertFilter` | `Promise<AlertEvent[]>` | supports site, camera, severity, status, and text filtering | alerts page, live side rail |
 | `listIncidents()` | none | `Promise<Incident[]>` | returns all incidents | incident page list |
 | `getIncidentById(id)` | incident id | `Promise<Incident \| undefined>` | finds one incident in mock storage | incident detail page |
-| `searchPlayback(params)` | `PlaybackSearchParams` | `Promise<PlaybackSegment[]>` | returns MediaMTX recording spans in backend mode and generated 15-minute buckets in mock mode | playback page |
+| `searchPlayback(params)` | `PlaybackSearchParams` | `Promise<PlaybackSegment[]>` | returns MediaMTX recording spans with browser playback and downloadable MP4 URLs in backend mode and generated 15-minute buckets in mock mode | playback page |
 | `listDevices(siteId?)` | optional `siteId` | `Promise<Device[]>` | returns all devices or a site-scoped subset | devices page |
-| `listVisionSources()` | none | `Promise<VisionSource[]>` | returns discovered mock-video sources with file metadata plus MediaMTX relay URLs | crop gallery page |
-| `getVisionStatus()` | none | `Promise<VisionPipelineStatus>` | returns detector, embedding, face-sidecar, job, and storage status | crop gallery page |
-| `runVisionMockJob(sourceIds?)` | optional source ids | `Promise<VisionJobStatus>` | starts a background mock-video processing job | crop gallery page |
-| `listCropTracks(filter?)` | `CropTrackFilter` | `Promise<CropTrack[]>` | returns stored first, middle, and last crop states per track | crop gallery page |
+| `listVisionSources()` | none | `Promise<VisionSource[]>` | returns camera-oriented vision sources with MediaMTX relay URLs and processed-segment counts | crop gallery page |
+| `getVisionStatus()` | none | `Promise<VisionPipelineStatus>` | returns detector, embedding, face-sidecar, vector-store, queue, and storage status | crop gallery page |
+| `runVisionMockJob(sourceIds?)` | optional source ids | `Promise<VisionJobStatus>` | requests an immediate recordings scan in backend mode | crop gallery page |
+| `listCropTracks(filter?)` | `CropTrackFilter` | `Promise<CropTrack[]>` | returns stored first, middle, and last crop states per track with time-range filtering | crop gallery page |
+| `getCropTrack(trackId)` | track id | `Promise<CropTrackDetail \| undefined>` | returns detailed movement, bbox, and timing info for one track | crop gallery page |
+| `getSystemSettings()` | none | `Promise<SystemSettings>` | returns the current auth and env-backed runtime settings surface used by the Settings page | settings page |
 
 ### `RealtimeEventSocket`
 
@@ -211,6 +213,7 @@ All of the following types live in `packages/types/src/index.ts`.
 - `motionScore: number`
 - `durationSec?: number`
 - `playbackUrl?: string`
+- `downloadUrl?: string`
 
 ### `Device`
 

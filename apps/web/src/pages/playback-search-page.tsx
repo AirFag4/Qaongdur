@@ -163,14 +163,28 @@ export function PlaybackSearchPage() {
               </div>
 
               {selectedSegment?.playbackUrl ? (
-                <video
-                  key={selectedSegment.playbackUrl}
-                  className="aspect-video w-full rounded-lg border border-stone-700 bg-black"
-                  controls
-                  preload="metadata"
-                >
-                  <source src={selectedSegment.playbackUrl} type="video/mp4" />
-                </video>
+                <div className="space-y-3">
+                  <video
+                    key={selectedSegment.playbackUrl}
+                    className="aspect-video w-full rounded-lg border border-stone-700 bg-black"
+                    controls
+                    preload="metadata"
+                  >
+                    <source src={selectedSegment.playbackUrl} type="video/mp4" />
+                  </video>
+                  {selectedSegment.downloadUrl ? (
+                    <div className="flex justify-end">
+                      <a
+                        href={selectedSegment.downloadUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex rounded-md border border-stone-700 px-3 py-2 text-sm text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
+                      >
+                        Download MP4
+                      </a>
+                    </div>
+                  ) : null}
+                </div>
               ) : (
                 <div className="flex aspect-video items-center justify-center rounded-lg border border-dashed border-stone-700 bg-stone-950/60 px-4 text-center text-sm text-stone-400">
                   Playback video is only available when the real backend returns MediaMTX recording URLs.

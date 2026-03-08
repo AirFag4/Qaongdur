@@ -155,6 +155,7 @@ export interface PlaybackSegment {
   motionScore: number;
   durationSec?: number;
   playbackUrl?: string;
+  downloadUrl?: string;
 }
 
 export interface Device {
@@ -218,15 +219,16 @@ export interface VisionSource {
   siteId: string;
   cameraId: string;
   cameraName: string;
-  filePath: string;
   pathName: string;
-  streamUrl: string;
-  captureMode: "file" | "rtsp-relay";
-  durationSec: number;
-  frameWidth: number;
-  frameHeight: number;
-  sourceFps: number;
+  relayRtspUrl: string;
+  liveStreamUrl?: string | null;
+  sourceKind: string;
+  ingestMode: string;
+  health: HealthStatus;
   trackCount: number;
+  processedSegmentCount: number;
+  latestProcessedAt?: string | null;
+  lastSegmentAt?: string | null;
 }
 
 export interface VisionStorageStatus {
@@ -249,6 +251,7 @@ export interface VisionJobStatus {
 
 export interface VisionPipelineStatus {
   sampleMode: boolean;
+  autoIngest?: boolean;
   detector: {
     available: boolean;
     modelName: string;
@@ -264,13 +267,28 @@ export interface VisionPipelineStatus {
     modelName: string;
     detail: string;
   };
+  vectorStore?: {
+    enabled: boolean;
+    available: boolean;
+    provider: string;
+    detail: string;
+  };
+  sourceSync?: {
+    lastSyncedAt?: string | null;
+    error?: string | null;
+  };
+  queueDepth?: number;
+  sampleFps?: number;
   latestJob?: VisionJobStatus | null;
   storage: VisionStorageStatus;
 }
 
 export interface CropTrackFilter {
   sourceId?: string;
+  cameraId?: string;
   label?: VisionTrackLabel | "all";
+  fromAt?: string;
+  toAt?: string;
 }
 
 export interface CropTrack {
@@ -290,18 +308,53 @@ export interface CropTrack {
   firstSeenOffsetLabel: string;
   middleSeenOffsetLabel: string;
   lastSeenOffsetLabel: string;
+  segmentPath?: string | null;
+  segmentStartAt?: string | null;
+  segmentDurationSec?: number | null;
   frameCount: number;
   sampleFps: number;
   maxConfidence: number;
   avgConfidence: number;
   embeddingStatus: string;
   embeddingModel?: string | null;
+  embeddingDim?: number | null;
   faceStatus: string;
   faceModel?: string | null;
+  faceDim?: number | null;
   closedReason: string;
+  firstPoint?: { x: number; y: number } | null;
+  middlePoint?: { x: number; y: number } | null;
+  lastPoint?: { x: number; y: number } | null;
   firstCropDataUrl: string;
   middleCropDataUrl: string;
   lastCropDataUrl: string;
+}
+
+export interface CropTrackDetail extends CropTrack {
+  firstBBox?: [number, number, number, number];
+  middleBBox?: [number, number, number, number];
+  lastBBox?: [number, number, number, number];
+  createdAt?: string;
+}
+
+export interface SystemSettings {
+  checkedAt: string;
+  auth: {
+    issuer: string;
+    audience: string;
+    stepUpAcr: string;
+    user: AuthenticatedUser;
+  };
+  recording: {
+    segmentDurationSeconds: number;
+    playbackPublicUrl: string;
+    hlsPublicUrl: string;
+  };
+  vision: {
+    serviceUrl: string;
+    autoIngest: boolean;
+    notes: string[];
+  };
 }
 
 export interface RealtimeAlertEvent {
@@ -333,4 +386,6 @@ export interface VmsApiClient {
   getVisionStatus(): Promise<VisionPipelineStatus>;
   runVisionMockJob(sourceIds?: string[]): Promise<VisionJobStatus>;
   listCropTracks(filter?: CropTrackFilter): Promise<CropTrack[]>;
+  getCropTrack(trackId: string): Promise<CropTrackDetail | undefined>;
+  getSystemSettings(): Promise<SystemSettings>;
 }
