@@ -7,9 +7,10 @@ ENV PIP_NO_CACHE_DIR=1
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential cmake git pkg-config \
+  && apt-get install -y --no-install-recommends build-essential cmake curl pkg-config \
   && rm -rf /var/lib/apt/lists/*
 
+COPY third_party/InspireFace /opt/third_party/InspireFace
 COPY services/face-api/pyproject.toml ./pyproject.toml
 COPY services/face-api/src ./src
 COPY services/face-api/entrypoint.sh /entrypoint.sh

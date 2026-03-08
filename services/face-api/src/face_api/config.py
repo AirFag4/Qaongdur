@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     service_port: int = 8020
     runtime_dir: str = "/runtime"
     bootstrap_error_file: str = "/runtime/bootstrap-error.txt"
-    inspireface_repo: str = "/mnt/inspireface"
-    resource_path: str = "/mnt/inspireface/test_res/pack/Megatron"
+    inspireface_repo: str = "/opt/third_party/InspireFace"
+    resource_path: str = "/runtime/resources/pack/Megatron"
     model_name: str = "Megatron"
 
     def ensure_directories(self) -> None:

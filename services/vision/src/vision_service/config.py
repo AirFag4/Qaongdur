@@ -31,8 +31,11 @@ class Settings(BaseSettings):
     sample_fps: float = 2.0
     min_sample_fps: float = 1.0
     max_sample_fps: float = 3.0
-    tracker_iou_threshold: float = 0.3
-    tracker_max_gap_frames: int = 3
+    tracker_activation_threshold: float = 0.35
+    tracker_matching_threshold: float = 0.8
+    tracker_lost_buffer_frames: int = 6
+    tracker_minimum_consecutive_frames: int = 1
+    tracker_max_gap_frames: int = 6
     storage_limit_bytes: int = 10 * 1024 * 1024 * 1024
     crop_jpeg_quality: int = 85
     crop_max_dimension: int = 320

@@ -131,7 +131,7 @@ export function CropGalleryPage() {
             <div>
               <CardTitle>Crop Tracks</CardTitle>
               <CardDescription>
-                First, middle, and last object crops for tracked people and vehicles.
+                Representative middle crops for tracked people and vehicles, with first and last sighting metadata below.
               </CardDescription>
             </div>
             <div className="text-right text-xs text-stone-400">
@@ -161,23 +161,15 @@ export function CropGalleryPage() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { label: "First", src: track.firstCropDataUrl },
-                      { label: "Main", src: track.middleCropDataUrl },
-                      { label: "Last", src: track.lastCropDataUrl },
-                    ].map((item) => (
-                      <div key={item.label} className="space-y-1">
-                        <div className="aspect-[4/5] overflow-hidden rounded-md border border-stone-700 bg-stone-950">
-                          <img
-                            src={item.src}
-                            alt={`${track.cameraName} ${item.label.toLowerCase()} crop`}
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
-                        <p className="text-center text-[11px] text-stone-500">{item.label}</p>
-                      </div>
-                    ))}
+                  <div className="space-y-1">
+                    <div className="aspect-[4/5] overflow-hidden rounded-md border border-stone-700 bg-stone-950">
+                      <img
+                        src={track.middleCropDataUrl}
+                        alt={`${track.cameraName} representative crop`}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <p className="text-center text-[11px] text-stone-500">Representative crop</p>
                   </div>
 
                   <div className="grid gap-2 text-[11px] text-stone-400 sm:grid-cols-2">

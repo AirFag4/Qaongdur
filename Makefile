@@ -6,10 +6,14 @@ FACE_COMPOSE := docker compose --env-file $(ENV_FILE) -f infra/docker/compose.co
 MOCK_VIDEO_COMPOSE := docker compose --env-file $(ENV_FILE) -f infra/docker/compose.core.yml --profile core --profile mock-video
 AUTH_COMPOSE := docker compose --env-file $(ENV_FILE) -f infra/docker/compose.auth.yml
 
-.PHONY: setup dev lint test build docker-up docker-auth-up docker-down logs seed vision-up face-up mock-video-up mock-stream-up
+.PHONY: setup submodules dev lint test build docker-up docker-auth-up docker-down logs seed vision-up face-up mock-video-up mock-stream-up
 
 setup:
+	git submodule update --init --recursive
 	pnpm install
+
+submodules:
+	git submodule update --init --recursive
 
 dev:
 	pnpm --filter @qaongdur/web dev

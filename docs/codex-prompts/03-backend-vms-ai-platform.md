@@ -105,7 +105,7 @@ Baseline expectations:
 
 Current repo-specific note:
 
-- the current implementation uses a separate `face-api` sidecar backed by the local `../InspireFace` checkout and the `Megatron` resource pack because the Linux runtime library is not directly importable inside `services/vision`
+- the current implementation uses a separate `face-api` sidecar backed by the vendored `third_party/InspireFace` submodule and the `Megatron` resource pack because the Linux runtime library is not directly importable inside `services/vision`
 
 Design the code so CPU mode works for demos and GPU mode can be enabled later through Docker profiles.
 

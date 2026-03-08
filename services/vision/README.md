@@ -16,11 +16,13 @@ uv run qaongdur-vision
 Container path:
 
 ```bash
+git submodule update --init --recursive
 cp .env.example .env
 make vision-up
 ```
 
 The container path is the recommended way to run the full mock-video slice because it pins CPU-only PyTorch for this profile and starts the paired `mock-streamer` plus `face-api` services.
+It installs `supervision` from the vendored `third_party/supervision` submodule, so the tracked runtime is pinned inside the repo.
 
 ## Current Endpoints
 
@@ -40,8 +42,10 @@ The container path is the recommended way to run the full mock-video slice becau
 - `services/vision` reads the MediaMTX relay URL for each mock source instead of processing the file path directly
 - each job is bounded to one original file-duration window even though the publisher loops forever
 - the detector keeps only `person` and `vehicle`
+- track association uses `supervision.ByteTrack`
 - tracks are sampled at `1-3 fps`, default `2 fps`
 - each closed track stores first, middle, and last crop images
+- the `/crops` page uses the middle crop as the representative card image and keeps first and last timestamps in metadata
 - embeddings are computed from crop images only
 - face extraction is attempted once per qualifying person track through the separate `face-api` sidecar
 - metadata and embeddings are currently persisted in SQLite inside `/data/vision.sqlite3`
@@ -50,8 +54,9 @@ The container path is the recommended way to run the full mock-video slice becau
 ## Current Limitations
 
 - MobileCLIP2 uses a deterministic histogram fallback when the requested runtime weights are unavailable
-- the first `face-api` start compiles InspireFace from the local sibling `../InspireFace` checkout, so the face stage can report `service-unreachable` or `service-not-ready` until that build completes
-- the current face path depends on the host having the `../InspireFace` checkout available for the sidecar volume mount
+- the first `vision` start after rebuilding the image is slower than the earlier scaffold because the full detector, embedder, and tracking dependencies are installed in-container
+- the first `face-api` start compiles InspireFace from the vendored `third_party/InspireFace` submodule and may download the `Megatron` pack into `/runtime`, so the face stage can report `service-unreachable` or `service-not-ready` until that bootstrap completes
+- clones that skipped submodule initialization must run `git submodule update --init --recursive` before rebuilding the `face-api` or `vision` images
 - the job processes the current point in each looping relay, not a hard reset to the exact beginning of the source file
 - VLM is skipped
 - the embedding store is not a full vector index yet; it is shaped for a later Postgres plus `pgvector` migration

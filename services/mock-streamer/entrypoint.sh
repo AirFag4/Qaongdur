@@ -9,6 +9,7 @@ width="${MOCK_STREAM_WIDTH:-1280}"
 height="${MOCK_STREAM_HEIGHT:-720}"
 fps="${MOCK_STREAM_FPS:-15}"
 bitrate="${MOCK_STREAM_BITRATE:-2500k}"
+preset="${MOCK_STREAM_PRESET:-ultrafast}"
 gop_size=$((fps * 2))
 
 slugify() {
@@ -62,14 +63,17 @@ publish_file_loop() {
     ffmpeg \
       -hide_banner \
       -loglevel warning \
+      -fflags +genpts \
       -stream_loop -1 \
       -re \
       -i "${file_path}" \
       -an \
+      -vf "fps=${fps},scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black" \
       -c:v libx264 \
-      -preset veryfast \
+      -preset "${preset}" \
       -tune zerolatency \
       -pix_fmt yuv420p \
+      -r "${fps}" \
       -g "${gop_size}" \
       -keyint_min "${fps}" \
       -sc_threshold 0 \

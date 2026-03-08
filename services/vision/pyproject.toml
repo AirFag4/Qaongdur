@@ -5,11 +5,12 @@ description = "Qaongdur vision pipeline scaffold and demo ingestion service."
 requires-python = ">=3.11"
 dependencies = [
   "numpy>=2.1.0",
-  "opencv-python-headless>=4.10.0",
+  "opencv-python>=4.10.0",
   "Pillow>=11.1.0",
   "fastapi>=0.115.0",
   "httpx>=0.28.0",
   "pydantic-settings>=2.7.0",
+  "supervision==0.27.0.post1",
   "uvicorn[standard]>=0.34.0",
 ]
 

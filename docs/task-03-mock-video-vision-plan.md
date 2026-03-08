@@ -21,8 +21,7 @@ Use the local mock videos in `/Users/home/Desktop/AI_modelling_dev/AirFag4/Video
 The environment is not ready for every requested dependency to be fully real on day one:
 
 - `services/vision` is currently only a demo scaffold
-- `/Users/home/Desktop/AI_modelling_dev/AirFag4/supervision` is only a bare git checkout and does not contain usable package code
-- `/Users/home/Desktop/AI_modelling_dev/AirFag4/InspireFace/python` contains Python wrappers, but the expected native runtime libraries are still not packaged in a way that `services/vision` can import directly
+- the vendored `third_party/InspireFace` submodule contains Python wrappers, but the expected native runtime libraries still need a local compile step and model-pack hydration before the face stage can serve requests
 - no local MobileCLIP2 repo or weights are vendored beside the workspace
 
 Because of that, this implementation will prioritize:
@@ -186,6 +185,7 @@ That means:
 - `mock-streamer` loops those files into MediaMTX as RTSP mock cameras
 - `services/vision` consumes the MediaMTX relay URL rather than opening the file path directly
 - each processing run is bounded to one source-duration window even though the publisher loops forever
+- track association is handled by `supervision.ByteTrack` from the vendored `third_party/supervision` submodule
 - the crop page is driven by stored outputs, not by websocket-only transient events
 
 ### Frame rate
@@ -216,7 +216,7 @@ Detector-native labels like `car`, `truck`, `bus`, and `motorcycle` are normaliz
 - ROI drawing UI
 - live RTSP vision inference
 - full alert and incident generation from vision outputs
-- full InspireFace runtime packaging if the required binaries are not available locally
+- moving InspireFace from runtime bootstrap to a prebuilt packaged runtime
 
 ## Expected Deliverables
 
@@ -236,20 +236,21 @@ Completed in the current slice:
 - looping RTSP publication of those files into MediaMTX with a stable `mock-video-*` path naming scheme
 - detector contract narrowed to `person` and `vehicle`
 - sampled processing constrained to `1-3 fps`, default `2 fps`
-- internal IoU tracker with closed-track first, middle, and last crop outputs
+- packaged `supervision.ByteTrack` with closed-track first, middle, and last crop outputs
 - crop-only embedding stage with runtime fallback when MobileCLIP2 weights are unavailable
 - face stage gated to person tracks, minimum dwell time, and one embedding attempt per track
-- separate `face-api` sidecar that bootstraps InspireFace from the local sibling `InspireFace/` checkout and targets the `Megatron` resource pack
+- separate `face-api` sidecar that bootstraps InspireFace from the vendored `third_party/InspireFace` submodule and targets the `Megatron` resource pack
 - SQLite-backed metadata store for sources, jobs, tracks, crop assets, and embeddings
 - quota-managed crop artifact storage with a `10 GB` default budget
 - `control-api` proxy endpoints for sources, job execution, status, and crop-track reads
 
 Current limitations after implementation:
 
-- the first `face-api` startup compiles InspireFace from source and can take several minutes before the face stage becomes reachable
-- the sidecar depends on the host having the sibling `../InspireFace` checkout available for the Compose bind mount
+- the first `face-api` startup compiles InspireFace from source and may download the `Megatron` pack into `/runtime`, so it can take several minutes before the face stage becomes reachable
+- the first `vision` startup after an image rebuild is slower than the earlier scaffold because packaged detector, embedder, and tracker dependencies are now installed in the image
+- clones that skipped `--recurse-submodules` must initialize `third_party/InspireFace` before the face image can build
 - each job processes the current point in the looping RTSP source rather than resetting the publisher to the exact first frame
-- `/crops` page with fixed-aspect track cards and runtime status
+- `/crops` page with fixed-aspect track cards, representative middle-crop imagery, and runtime status
 - Compose wiring for `vision-cpu` with persistent `vision-data`
 - local recording-pruner sidecar for the MediaMTX recordings volume with a `10 GB` default budget
 
@@ -257,7 +258,6 @@ Current implementation gaps relative to the long-term design:
 
 - embeddings are stored in SQLite tables, not a true vector-search index yet
 - ROI filtering is still design-only
-- the tracker is an internal IoU implementation because the local `supervision` checkout is not usable as a package in this workspace
-- the first `face-api` startup is expensive because it compiles InspireFace from source at runtime instead of consuming a prebuilt packaged runtime
-- the current face path depends on the sibling `../InspireFace` checkout being present on the host for the Compose bind mount
+- the first `face-api` startup is expensive because it compiles InspireFace from source and may download the `Megatron` pack at runtime instead of consuming a prebuilt packaged runtime
+- the current face path still depends on the `third_party/InspireFace` submodule being initialized before the image can build
 - VLM remains intentionally skipped

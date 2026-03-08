@@ -4,7 +4,9 @@ set -eu
 runtime_dir="${QAONGDUR_FACE_RUNTIME_DIR:-/runtime}"
 site_packages_dir="${runtime_dir}/site-packages"
 bootstrap_error_file="${QAONGDUR_FACE_BOOTSTRAP_ERROR_FILE:-${runtime_dir}/bootstrap-error.txt}"
-inspireface_repo="${QAONGDUR_FACE_INSPIREFACE_REPO:-/mnt/inspireface}"
+inspireface_repo="${QAONGDUR_FACE_INSPIREFACE_REPO:-/opt/third_party/InspireFace}"
+model_name="${QAONGDUR_FACE_MODEL_NAME:-Megatron}"
+resource_path="${QAONGDUR_FACE_RESOURCE_PATH:-${runtime_dir}/resources/pack/${model_name}}"
 
 mkdir -p "${runtime_dir}" "${site_packages_dir}"
 rm -f "${bootstrap_error_file}"
@@ -13,9 +15,46 @@ record_bootstrap_error() {
   printf '%s\n' "$1" > "${bootstrap_error_file}"
 }
 
+ensure_resource_pack() {
+  if [ -f "${resource_path}" ]; then
+    return 0
+  fi
+
+  source_pack="${inspireface_repo}/test_res/pack/${model_name}"
+  if [ -f "${source_pack}" ]; then
+    mkdir -p "$(dirname "${resource_path}")"
+    cp "${source_pack}" "${resource_path}"
+    return 0
+  fi
+
+  case "${model_name}" in
+    Megatron)
+      model_url="https://github.com/HyperInspire/InspireFace/releases/download/v1.x/Megatron"
+      ;;
+    Pikachu)
+      model_url="https://github.com/HyperInspire/InspireFace/releases/download/v1.x/Pikachu"
+      ;;
+    Megatron_TRT)
+      model_url="https://github.com/HyperInspire/InspireFace/releases/download/v1.x/Megatron_TRT"
+      ;;
+    *)
+      record_bootstrap_error "Unsupported InspireFace model '${model_name}' and no vendored pack was found."
+      return 0
+      ;;
+  esac
+
+  echo "Downloading InspireFace ${model_name} model pack"
+  mkdir -p "$(dirname "${resource_path}")"
+  if ! curl -fsSL "${model_url}" -o "${resource_path}"; then
+    record_bootstrap_error "Failed to download InspireFace model pack '${model_name}' from ${model_url}."
+    return 0
+  fi
+}
+
 bootstrap_inspireface() {
   if [ -f "${site_packages_dir}/inspireface/__init__.py" ] && [ -f "${site_packages_dir}/inspireface/modules/core/libs/linux/x64/libInspireFace.so" ]; then
     echo "InspireFace runtime already bootstrapped."
+    ensure_resource_pack
     return 0
   fi
 
@@ -68,6 +107,8 @@ bootstrap_inspireface() {
     record_bootstrap_error "Failed to install the InspireFace Python package."
     return 0
   fi
+
+  ensure_resource_pack
 }
 
 bootstrap_inspireface

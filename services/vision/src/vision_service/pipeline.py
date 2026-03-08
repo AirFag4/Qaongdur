@@ -17,7 +17,7 @@ from .domain import ClosedTrack, MockVideoSource, utcnow_iso
 from .embedding import CropEmbedder
 from .face import FaceEmbedder
 from .mock_sources import build_mock_path_name, build_mock_stream_url, discover_mock_sources, slugify
-from .tracking import SimpleTrackManager
+from .tracking import ByteTrackManager
 
 LOGGER = logging.getLogger(__name__)
 
@@ -319,10 +319,14 @@ class VisionPipelineService:
         frame_interval = max(int(round(source_fps / sample_fps)), 1)
         frame_index = -1
         processed_tracks = 0
-        tracker = SimpleTrackManager(
+        tracker = ByteTrackManager(
             source=source,
-            iou_threshold=self._settings.tracker_iou_threshold,
+            activation_threshold=self._settings.tracker_activation_threshold,
+            matching_threshold=self._settings.tracker_matching_threshold,
+            lost_buffer_frames=self._settings.tracker_lost_buffer_frames,
+            minimum_consecutive_frames=self._settings.tracker_minimum_consecutive_frames,
             max_gap_frames=self._settings.tracker_max_gap_frames,
+            frame_rate=sample_fps,
         )
 
         while True:
@@ -360,10 +364,14 @@ class VisionPipelineService:
         capture: cv2.VideoCapture,
     ) -> int:
         processed_tracks = 0
-        tracker = SimpleTrackManager(
+        tracker = ByteTrackManager(
             source=source,
-            iou_threshold=self._settings.tracker_iou_threshold,
+            activation_threshold=self._settings.tracker_activation_threshold,
+            matching_threshold=self._settings.tracker_matching_threshold,
+            lost_buffer_frames=self._settings.tracker_lost_buffer_frames,
+            minimum_consecutive_frames=self._settings.tracker_minimum_consecutive_frames,
             max_gap_frames=self._settings.tracker_max_gap_frames,
+            frame_rate=sample_fps,
         )
         first_frame_deadline = time.monotonic() + 15.0
         started_at: float | None = None

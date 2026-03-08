@@ -12,6 +12,7 @@ Local Docker assets for the Qaongdur runtime.
 Preferred path from the repo root:
 
 ```bash
+git submodule update --init --recursive
 cp .env.example .env
 make docker-up
 ```
@@ -72,7 +73,8 @@ The `vision-cpu` flow now uses the VMS path, not a side-channel file-only path:
 - `control-api` discovers `.mp4` files from the sibling `Video/` directory as system-managed cameras
 - `mock-streamer` loops those files into MediaMTX as RTSP paths with the configured `MOCK_VIDEO_PATH_PREFIX`
 - `vision` reads the MediaMTX relay URL for each source and persists metadata plus crop artifacts in the `vision-data` volume
-- `face-api` boots the local InspireFace runtime from the sibling `InspireFace/` checkout and serves crop-level face embeddings to `vision`
+- `vision` installs `supervision` from the vendored `third_party/supervision` submodule and uses `ByteTrack`
+- `face-api` boots the vendored InspireFace runtime from the `third_party/InspireFace` submodule, downloads the `Megatron` pack into its runtime volume when needed, and serves crop-level face embeddings to `vision`
 
 Start it with:
 
@@ -87,7 +89,9 @@ Current behavior:
 - exposes those sources as MediaMTX relay URLs such as `rtsp://mediamtx:8554/mock-video-people-walking`
 - samples frames at `VISION_SAMPLE_FPS`, constrained to `1-3 fps`
 - detects only `person` and `vehicle`
+- normalizes looped publishers to the configured `MOCK_STREAM_WIDTH`, `MOCK_STREAM_HEIGHT`, and `MOCK_STREAM_FPS` so larger source files such as 4K vehicle clips stay stable
 - stores first, middle, and last crop JPEGs for each closed track
+- uses the middle crop as the representative `/crops` card image while preserving first and last timing metadata
 - enforces a `VISION_STORAGE_LIMIT_BYTES` artifact budget, default `10 GB`
 - reports detailed face-sidecar state through `VisionPipelineStatus.face`
 - skips VLM
@@ -95,7 +99,9 @@ Current behavior:
 
 Current limitation:
 
-- the first `face-api` startup compiles InspireFace from source and can take several minutes before face status becomes available
+- the first `face-api` startup compiles InspireFace from source and may download the `Megatron` model pack, so it can take several minutes before face status becomes available
+- clones that skipped `--recurse-submodules` must run `git submodule update --init --recursive` before building `vision` or `face-api`
+- the first `vision` startup after a rebuild is slower than the earlier scaffold because the image now includes packaged tracking, detector, and embedder dependencies
 - each mock-video job processes the current point in the looping relay for one original file-duration window; it does not restart the publisher from frame zero before every run
 
 ## Mock Streamer

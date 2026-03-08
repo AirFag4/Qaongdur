@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.6.1",
   "scripts": {
-    "setup": "pnpm install",
+    "setup": "pnpm run submodules && pnpm install",
+    "submodules": "git submodule update --init --recursive",
     "dev": "pnpm --filter @qaongdur/web dev",
     "build": "pnpm -r --if-present build",
     "lint": "pnpm -r --if-present lint",

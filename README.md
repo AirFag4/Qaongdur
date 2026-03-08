@@ -3,6 +3,18 @@
 Docker-first VMS + Vision AI + Agent AI project.  
 The repo now includes the initial monorepo structure, the first frontend web console, Keycloak-based auth foundations, the first real backend slice for RTSP camera onboarding, live HLS, and playback search through MediaMTX, and a VMS-backed mock-video vision path that treats the sibling `../Video` files as looped RTSP cameras.
 
+Clone with submodules for the full vision stack:
+
+```bash
+git clone --recurse-submodules <repo-url>
+```
+
+If you already cloned it without submodules:
+
+```bash
+git submodule update --init --recursive
+```
+
 ## Quick Start
 
 Fastest UI-only loop:
@@ -50,12 +62,14 @@ Current behavior in this mode:
 - `mock-streamer` loops those `.mp4` files into MediaMTX as RTSP paths such as `mock-video-people-walking` and `mock-video-vehicles`
 - `services/vision` mounts the same `../Video` directory for source metadata, but analytics now reads the MediaMTX relay URL for each mock source instead of processing the file path directly
 - the detector keeps only `person` and `vehicle`
+- track association now uses `supervision` `ByteTrack` from the vendored `third_party/supervision` submodule
 - tracks are sampled at `1-3 fps` per source, default `2 fps`
-- the new `/crops` page shows fixed-aspect first, main, and last crops for each completed track
+- the new `/crops` page shows a fixed-aspect representative middle crop for each completed track while retaining first and last sighting metadata
 - embeddings are computed from object crops only
 - the face stage only attempts one embedding per person track after the minimum dwell window
-- face embeddings are delegated to a separate `face-api` sidecar that bootstraps InspireFace from the local sibling `../InspireFace` checkout and uses the `Megatron` resource pack
-- the first `face-api` startup compiles the local InspireFace runtime inside the container and can take several minutes
+- face embeddings are delegated to a separate `face-api` sidecar that bootstraps InspireFace from the vendored `third_party/InspireFace` submodule and hydrates the `Megatron` resource pack into the persistent runtime volume
+- the first `face-api` startup compiles the vendored InspireFace runtime and downloads the `Megatron` pack inside the container, so it can take several minutes
+- the first `vision` startup after a clean rebuild can take longer than the earlier scaffold because detector and embedder runtimes are installed in the image
 - VLM is skipped in this slice
 
 Optional mock-video publisher only:
@@ -193,17 +207,17 @@ Implemented the first real Task 03 vision-processing path:
 - `mock-streamer` loops those files into MediaMTX as RTSP sources
 - `services/vision` consumes those MediaMTX relay URLs as `rtsp-relay` sources while still using the original file metadata to bound each analytics run
 - Ultralytics detection keeps only `person` and `vehicle`
-- an internal IoU tracker emits track-level first, middle, and last crop states
+- `supervision.ByteTrack` emits track-level first, middle, and last crop states
 - crop artifacts and track metadata are persisted in a local SQLite-backed store under the `vision-data` volume
 - object embeddings are computed from crop images only, with a deterministic fallback when MobileCLIP2 weights are unavailable
-- face embedding is gated to person tracks that survive long enough and is attempted only once per track through a separate `face-api` sidecar
+- face embedding is gated to person tracks that survive long enough and is attempted only once per track through a separate `face-api` sidecar backed by the vendored `third_party/InspireFace` submodule
 - a new `/crops` page in the web console exposes the stored track cards and vision runtime status
 
 Current limitations of this slice:
 
 - crop embeddings are persisted in SQLite tables shaped for a later Postgres plus `pgvector` migration, not a full vector index yet
 - ROI filtering is only designed at the schema level for now
-- the first `face-api` startup compiles the local InspireFace runtime from `../InspireFace`, so the face stage can report `service-unreachable` or `service-not-ready` until that bootstrap finishes
+- the first `face-api` startup compiles the vendored InspireFace runtime from `third_party/InspireFace` and downloads the `Megatron` pack into the runtime volume, so the face stage can report `service-unreachable` or `service-not-ready` until that bootstrap finishes
 - each mock-video job processes one file-duration window from the current live loop; it does not reset the publisher to the exact beginning of the source file before every run
 
 ## For Developers

@@ -231,11 +231,10 @@ services:
       QAONGDUR_FACE_SERVICE_PORT: 8020
       QAONGDUR_FACE_RUNTIME_DIR: /runtime
       QAONGDUR_FACE_BOOTSTRAP_ERROR_FILE: /runtime/bootstrap-error.txt
-      QAONGDUR_FACE_INSPIREFACE_REPO: /mnt/inspireface
-      QAONGDUR_FACE_RESOURCE_PATH: /mnt/inspireface/test_res/pack/Megatron
+      QAONGDUR_FACE_INSPIREFACE_REPO: /opt/third_party/InspireFace
+      QAONGDUR_FACE_RESOURCE_PATH: /runtime/resources/pack/Megatron
       QAONGDUR_FACE_MODEL_NAME: Megatron
     volumes:
-      - ../../../InspireFace:/mnt/inspireface:ro
       - face-runtime:/runtime
     ports:
       - "${FACE_API_PORT}:8020"

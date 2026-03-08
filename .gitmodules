@@ -1,0 +1,8 @@
+[submodule "third_party/supervision"]
+	path = third_party/supervision
+	url = https://github.com/roboflow/supervision.git
+	branch = main
+[submodule "third_party/InspireFace"]
+	path = third_party/InspireFace
+	url = https://github.com/HyperInspire/InspireFace.git
+	branch = master

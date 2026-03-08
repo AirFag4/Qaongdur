@@ -1,28 +1,19 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from uuid import uuid4
 
 import numpy as np
+import supervision as sv
 
 from .domain import ClosedTrack, Detection, MockVideoSource, TrackObservation, utcnow_iso
 
-
-def _compute_iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
-    ax1, ay1, ax2, ay2 = a
-    bx1, by1, bx2, by2 = b
-    inter_x1 = max(ax1, bx1)
-    inter_y1 = max(ay1, by1)
-    inter_x2 = min(ax2, bx2)
-    inter_y2 = min(ay2, by2)
-    inter_w = max(0, inter_x2 - inter_x1)
-    inter_h = max(0, inter_y2 - inter_y1)
-    if inter_w == 0 or inter_h == 0:
-        return 0.0
-    intersection = inter_w * inter_h
-    a_area = max(1, (ax2 - ax1) * (ay2 - ay1))
-    b_area = max(1, (bx2 - bx1) * (by2 - by1))
-    return intersection / float(a_area + b_area - intersection)
+TRACK_LABELS = ("person", "vehicle")
+TRACK_CLASS_IDS = {
+    "person": 0,
+    "vehicle": 1,
+}
 
 
 def _crop_frame(
@@ -38,12 +29,50 @@ def _crop_frame(
     return frame_bgr[y1:y2, x1:x2].copy()
 
 
+def _empty_detections() -> sv.Detections:
+    return sv.Detections(
+        xyxy=np.empty((0, 4), dtype=np.float32),
+        confidence=np.empty((0,), dtype=np.float32),
+        class_id=np.empty((0,), dtype=np.int32),
+    )
+
+
+def _to_supervision_detections(
+    *,
+    label: str,
+    detections: list[Detection],
+) -> sv.Detections:
+    if not detections:
+        return _empty_detections()
+
+    return sv.Detections(
+        xyxy=np.asarray([detection.bbox for detection in detections], dtype=np.float32),
+        confidence=np.asarray(
+            [detection.confidence for detection in detections],
+            dtype=np.float32,
+        ),
+        class_id=np.full(
+            len(detections),
+            TRACK_CLASS_IDS[label],
+            dtype=np.int32,
+        ),
+        data={
+            "source_index": np.arange(len(detections), dtype=np.int32),
+            "detector_label": np.asarray(
+                [detection.detector_label for detection in detections],
+                dtype=object,
+            ),
+        },
+    )
+
+
 @dataclass(slots=True)
 class _ActiveTrack:
     id: str
     source: MockVideoSource
     label: str
     detector_label: str
+    external_tracker_id: int
     observations: list[TrackObservation] = field(default_factory=list)
     max_confidence: float = 0.0
     confidence_sum: float = 0.0
@@ -86,18 +115,32 @@ class _ActiveTrack:
         )
 
 
-class SimpleTrackManager:
+class ByteTrackManager:
     def __init__(
         self,
         *,
         source: MockVideoSource,
-        iou_threshold: float,
+        activation_threshold: float,
+        matching_threshold: float,
+        lost_buffer_frames: int,
+        minimum_consecutive_frames: int,
         max_gap_frames: int,
+        frame_rate: float,
     ) -> None:
+        tracker_frame_rate = max(int(round(frame_rate)), 1)
         self._source = source
-        self._iou_threshold = iou_threshold
-        self._max_gap_frames = max_gap_frames
-        self._active_tracks: dict[str, _ActiveTrack] = {}
+        self._max_gap_frames = max(max_gap_frames, 1)
+        self._trackers = {
+            label: sv.ByteTrack(
+                track_activation_threshold=activation_threshold,
+                lost_track_buffer=max(lost_buffer_frames, self._max_gap_frames),
+                minimum_matching_threshold=matching_threshold,
+                frame_rate=tracker_frame_rate,
+                minimum_consecutive_frames=minimum_consecutive_frames,
+            )
+            for label in TRACK_LABELS
+        }
+        self._active_tracks: dict[tuple[str, int], _ActiveTrack] = {}
 
     def update(
         self,
@@ -107,63 +150,59 @@ class SimpleTrackManager:
         detections: list[Detection],
         frame_bgr: np.ndarray,
     ) -> list[ClosedTrack]:
+        grouped_detections: dict[str, list[Detection]] = defaultdict(list)
+        for detection in detections:
+            if detection.label in TRACK_CLASS_IDS:
+                grouped_detections[detection.label].append(detection)
+
+        updated_keys: set[tuple[str, int]] = set()
+        for label, tracker in self._trackers.items():
+            label_detections = grouped_detections.get(label, [])
+            tracked_detections = tracker.update_with_detections(
+                _to_supervision_detections(
+                    label=label,
+                    detections=label_detections,
+                )
+            )
+            if len(tracked_detections) == 0 or tracked_detections.tracker_id is None:
+                continue
+
+            source_indices = tracked_detections.data.get("source_index", [])
+            for tracked_index, tracker_id in enumerate(tracked_detections.tracker_id.tolist()):
+                source_index = int(source_indices[tracked_index])
+                detection = label_detections[source_index]
+                key = (label, int(tracker_id))
+                track = self._active_tracks.get(key)
+                if track is None:
+                    track = _ActiveTrack(
+                        id=f"trk-{uuid4().hex[:10]}",
+                        source=self._source,
+                        label=label,
+                        detector_label=detection.detector_label,
+                        external_tracker_id=int(tracker_id),
+                    )
+                    self._active_tracks[key] = track
+                track.update(
+                    frame_index=frame_index,
+                    offset_ms=offset_ms,
+                    detection=detection,
+                    frame_bgr=frame_bgr,
+                )
+                updated_keys.add(key)
+
         closed: list[ClosedTrack] = []
-        unmatched_track_ids = set(self._active_tracks.keys())
-        unmatched_detection_indices = set(range(len(detections)))
-
-        candidate_pairs: list[tuple[float, str, int]] = []
-        for track_id, track in self._active_tracks.items():
-            last_bbox = track.observations[-1].bbox if track.observations else None
-            if last_bbox is None:
-                continue
-            for detection_index, detection in enumerate(detections):
-                if detection.label != track.label:
-                    continue
-                iou = _compute_iou(last_bbox, detection.bbox)
-                if iou >= self._iou_threshold:
-                    candidate_pairs.append((iou, track_id, detection_index))
-
-        for _, track_id, detection_index in sorted(candidate_pairs, reverse=True):
-            if track_id not in unmatched_track_ids or detection_index not in unmatched_detection_indices:
-                continue
-            track = self._active_tracks[track_id]
-            track.update(
-                frame_index=frame_index,
-                offset_ms=offset_ms,
-                detection=detections[detection_index],
-                frame_bgr=frame_bgr,
-            )
-            unmatched_track_ids.discard(track_id)
-            unmatched_detection_indices.discard(detection_index)
-
-        for detection_index in sorted(unmatched_detection_indices):
-            detection = detections[detection_index]
-            track_id = f"trk-{uuid4().hex[:10]}"
-            track = _ActiveTrack(
-                id=track_id,
-                source=self._source,
-                label=detection.label,
-                detector_label=detection.detector_label,
-            )
-            track.update(
-                frame_index=frame_index,
-                offset_ms=offset_ms,
-                detection=detection,
-                frame_bgr=frame_bgr,
-            )
-            self._active_tracks[track_id] = track
-
-        expired_track_ids = [
-            track_id
-            for track_id, track in self._active_tracks.items()
-            if frame_index - track.last_frame_index > self._max_gap_frames
+        stale_keys = [
+            key
+            for key, track in self._active_tracks.items()
+            if key not in updated_keys and frame_index - track.last_frame_index > self._max_gap_frames
         ]
-        for track_id in expired_track_ids:
-            closed.append(self._active_tracks.pop(track_id).close("track-gap"))
-
+        for key in stale_keys:
+            closed.append(self._active_tracks.pop(key).close("track-gap"))
         return closed
 
     def finalize(self) -> list[ClosedTrack]:
         closed = [track.close("end-of-source") for track in self._active_tracks.values()]
         self._active_tracks.clear()
+        for tracker in self._trackers.values():
+            tracker.reset()
         return closed
