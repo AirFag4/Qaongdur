@@ -9,11 +9,19 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import type { Device } from "@qaongdur/types";
+import type { Device, RtspTransport } from "@qaongdur/types";
 import { Button, Card, CardDescription, CardTitle, HealthStatusBadge, LoadingState } from "@qaongdur/ui";
 import { RoleGate } from "../auth/role-gate";
 import { apiClient, queryKeys } from "../lib/api";
 import { useOperatorOutlet } from "../app/use-operator-outlet";
+
+type CameraDraft = {
+  name: string;
+  zone: string;
+  rtspUrl: string;
+  rtspTransport: RtspTransport;
+  rtspAnyPort: boolean;
+};
 
 export function DevicesPage() {
   const { siteId, sites } = useOperatorOutlet();
@@ -23,10 +31,12 @@ export function DevicesPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [cameraActionMessage, setCameraActionMessage] = useState<string | null>(null);
   const [cameraActionError, setCameraActionError] = useState<string | null>(null);
-  const [draft, setDraft] = useState({
+  const [draft, setDraft] = useState<CameraDraft>({
     name: "",
     zone: "",
     rtspUrl: "",
+    rtspTransport: "automatic",
+    rtspAnyPort: false,
   });
 
   const invalidateOperationalQueries = async () => {
@@ -56,6 +66,8 @@ export function DevicesPage() {
         name: draft.name.trim(),
         zone: draft.zone.trim(),
         rtspUrl: draft.rtspUrl.trim(),
+        rtspTransport: draft.rtspTransport,
+        rtspAnyPort: draft.rtspAnyPort,
       });
     },
     onMutate: () => {
@@ -63,7 +75,13 @@ export function DevicesPage() {
       setCameraActionMessage(null);
     },
     onSuccess: async () => {
-      setDraft({ name: "", zone: "", rtspUrl: "" });
+      setDraft({
+        name: "",
+        zone: "",
+        rtspUrl: "",
+        rtspTransport: "automatic",
+        rtspAnyPort: false,
+      });
       await invalidateOperationalQueries();
     },
   });
@@ -265,7 +283,7 @@ export function DevicesPage() {
               Target site: {sites.find((site) => site.id === (siteId ?? sites[0]?.id))?.name ?? "Unavailable"}
             </div>
           </div>
-          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_minmax(0,2fr)_auto]">
+          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_minmax(0,2fr)_180px_auto]">
             <label className="flex flex-col gap-1 text-xs text-stone-400">
               Camera name
               <input
@@ -299,6 +317,24 @@ export function DevicesPage() {
                 placeholder="rtsp://user:pass@camera-host:554/stream"
               />
             </label>
+            <label className="flex flex-col gap-1 text-xs text-stone-400">
+              RTSP transport
+              <select
+                className="form-select"
+                value={draft.rtspTransport}
+                onChange={(event) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    rtspTransport: event.target.value as RtspTransport,
+                  }))
+                }
+              >
+                <option value="automatic">Automatic</option>
+                <option value="udp">UDP</option>
+                <option value="tcp">TCP</option>
+                <option value="multicast">Multicast</option>
+              </select>
+            </label>
             <div className="flex items-end">
               <Button
                 size="sm"
@@ -315,6 +351,27 @@ export function DevicesPage() {
               </Button>
             </div>
           </div>
+          <div className="flex flex-wrap items-center gap-4 text-xs text-stone-400">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-stone-700 bg-stone-950 text-cyan-400"
+                checked={draft.rtspAnyPort}
+                onChange={(event) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    rtspAnyPort: event.target.checked,
+                  }))
+                }
+              />
+              Enable MediaMTX `rtspAnyPort` compatibility mode
+            </label>
+            <p className="text-[11px] text-stone-500">
+              Automatic is the default. If VLC works but MediaMTX fails after SDP or TCP
+              negotiation, try `udp`. Enable `rtspAnyPort` only for cameras that need relaxed
+              UDP port handling.
+            </p>
+          </div>
           {createCamera.error ? (
             <p className="text-xs text-red-300">
               {createCamera.error instanceof Error
@@ -324,7 +381,8 @@ export function DevicesPage() {
           ) : null}
           {createCamera.data ? (
             <p className="text-xs text-emerald-300">
-              Camera {createCamera.data.name} added. Open the Live or Playback page to verify the stream.
+              Camera {createCamera.data.name} added with {createCamera.data.rtspTransport ?? "automatic"} RTSP transport.
+              Open the Live or Playback page to verify the stream.
             </p>
           ) : null}
         </Card>

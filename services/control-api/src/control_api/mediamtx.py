@@ -50,11 +50,19 @@ class MediaMtxClient:
         self._playback_internal_url = playback_internal_url.rstrip("/")
         self._playback_public_url = playback_public_url.rstrip("/")
 
-    async def add_camera_path(self, *, path_name: str, source: str) -> None:
-        payload = {
-            "source": source,
-            "rtspTransport": "tcp",
-        }
+    async def add_camera_path(
+        self,
+        *,
+        path_name: str,
+        source: str,
+        rtsp_transport: str = "automatic",
+        rtsp_any_port: bool = False,
+    ) -> None:
+        payload = build_camera_path_payload(
+            source=source,
+            rtsp_transport=rtsp_transport,
+            rtsp_any_port=rtsp_any_port,
+        )
 
         async with httpx.AsyncClient(auth=self._api_auth, timeout=5.0) as client:
             response = await client.post(
@@ -87,9 +95,21 @@ class MediaMtxClient:
         detail = response.text.strip() or "MediaMTX rejected the path deletion request."
         raise MediaMtxError(detail)
 
-    async def reconnect_camera_path(self, *, path_name: str, source: str) -> None:
+    async def reconnect_camera_path(
+        self,
+        *,
+        path_name: str,
+        source: str,
+        rtsp_transport: str = "automatic",
+        rtsp_any_port: bool = False,
+    ) -> None:
         await self.delete_camera_path(path_name=path_name, ignore_missing=True)
-        await self.add_camera_path(path_name=path_name, source=source)
+        await self.add_camera_path(
+            path_name=path_name,
+            source=source,
+            rtsp_transport=rtsp_transport,
+            rtsp_any_port=rtsp_any_port,
+        )
 
     async def list_paths(self) -> dict[str, PathState]:
         async with httpx.AsyncClient(auth=self._api_auth, timeout=5.0) as client:
@@ -186,6 +206,21 @@ def filter_playback_spans(
 def extract_host_label(url: str) -> str:
     parsed = urlsplit(url)
     return parsed.hostname or "unknown"
+
+
+def build_camera_path_payload(
+    *,
+    source: str,
+    rtsp_transport: str = "automatic",
+    rtsp_any_port: bool = False,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "source": source,
+        "rtspTransport": rtsp_transport,
+    }
+    if rtsp_any_port:
+        payload["rtspAnyPort"] = True
+    return payload
 
 
 def raise_as_bad_gateway(error: MediaMtxError) -> HTTPException:

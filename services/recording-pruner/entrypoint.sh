@@ -31,7 +31,7 @@ prune_if_needed() {
     oldest="$(
       find "$RECORDINGS_DIR" -type f -printf '%T@ %p\n' 2>/dev/null \
         | sort -n \
-        | head -n 1 \
+        | sed -n '1p' \
         | cut -d' ' -f2-
     )"
 

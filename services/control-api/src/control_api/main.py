@@ -4,7 +4,7 @@ import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, status
@@ -54,6 +54,8 @@ class CameraCreateBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     zone: str = Field(min_length=1, max_length=120)
     rtspUrl: str = Field(min_length=1)
+    rtspTransport: Literal["automatic", "udp", "multicast", "tcp"] = "automatic"
+    rtspAnyPort: bool = False
 
     @field_validator("rtspUrl")
     @classmethod
@@ -115,6 +117,9 @@ def _serialize_camera(
     tags = ["mediamtx", "recording-enabled"]
     if record.ingest_mode == "pull":
         tags.append("rtsp")
+        tags.append(f"rtsp-{record.rtsp_transport}")
+        if record.rtsp_any_port:
+            tags.append("rtsp-any-port")
     if record.source_kind == "mock-video":
         tags.append("mock-video")
     if record.system_managed:
@@ -127,6 +132,8 @@ def _serialize_camera(
         "streamUrl": record.rtsp_url,
         "liveStreamUrl": media_client.build_hls_url(record.path_name) if path_state and path_state.ready else None,
         "playbackPath": record.path_name,
+        "rtspTransport": record.rtsp_transport,
+        "rtspAnyPort": record.rtsp_any_port,
         "health": health,
         "fps": 0,
         "resolution": "Unknown",
@@ -328,6 +335,8 @@ async def _list_path_states(
                 media_client.add_camera_path(
                     path_name=record.path_name,
                     source=record.rtsp_url,
+                    rtsp_transport=record.rtsp_transport,
+                    rtsp_any_port=record.rtsp_any_port,
                 )
                 for record in missing_records
             ]
@@ -403,12 +412,16 @@ def create_app() -> FastAPI:
             name=body.name,
             zone=body.zone,
             rtsp_url=body.rtspUrl,
+            rtsp_transport=body.rtspTransport,
+            rtsp_any_port=body.rtspAnyPort,
         )
 
         try:
             await media_client.add_camera_path(
                 path_name=record.path_name,
                 source=record.rtsp_url,
+                rtsp_transport=record.rtsp_transport,
+                rtsp_any_port=record.rtsp_any_port,
             )
         except MediaMtxError as error:
             raise raise_as_bad_gateway(error) from error
@@ -441,6 +454,8 @@ def create_app() -> FastAPI:
             await media_client.reconnect_camera_path(
                 path_name=record.path_name,
                 source=record.rtsp_url,
+                rtsp_transport=record.rtsp_transport,
+                rtsp_any_port=record.rtsp_any_port,
             )
             path_states = await media_client.list_paths()
         except MediaMtxError as error:

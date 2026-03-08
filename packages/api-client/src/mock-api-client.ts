@@ -160,12 +160,19 @@ export class MockVmsApiClient implements VmsApiClient {
       streamUrl: input.rtspUrl,
       liveStreamUrl: null,
       playbackPath: null,
+      rtspTransport: input.rtspTransport ?? "automatic",
+      rtspAnyPort: input.rtspAnyPort ?? false,
       health: "warning",
       fps: 0,
       resolution: "Unknown",
       uptimePct: 0,
       lastSeenAt: new Date().toISOString(),
-      tags: ["rtsp", "mock"],
+      tags: [
+        "rtsp",
+        "mock",
+        `rtsp-${input.rtspTransport ?? "automatic"}`,
+        ...(input.rtspAnyPort ? ["rtsp-any-port"] : []),
+      ],
     };
 
     mockData.cameras.unshift(camera);

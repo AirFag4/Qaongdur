@@ -11,6 +11,8 @@ def test_camera_store_persists_camera_records(tmp_path) -> None:
         name="Gate Camera",
         zone="North Gate",
         rtsp_url="rtsp://camera.local/stream",
+        rtsp_transport="udp",
+        rtsp_any_port=True,
     )
     store.save_camera(record)
 
@@ -20,6 +22,8 @@ def test_camera_store_persists_camera_records(tmp_path) -> None:
     assert cameras[0].id == record.id
     assert cameras[0].path_name == record.path_name
     assert cameras[0].rtsp_url == "rtsp://camera.local/stream"
+    assert cameras[0].rtsp_transport == "udp"
+    assert cameras[0].rtsp_any_port is True
 
 
 def test_camera_store_deletes_camera_records(tmp_path) -> None:
@@ -77,3 +81,33 @@ def test_camera_store_syncs_system_managed_cameras_without_deleting_manual_recor
     assert "cam-mock-video-people-walking" in records
     assert records["cam-mock-video-people-walking"].system_managed is True
     assert records["cam-mock-video-people-walking"].ingest_mode == "publish"
+    assert records["cam-mock-video-people-walking"].rtsp_transport == "automatic"
+    assert records["cam-mock-video-people-walking"].rtsp_any_port is False
+
+
+def test_camera_store_defaults_legacy_records_to_automatic_transport(tmp_path) -> None:
+    payload_path = tmp_path / "cameras.json"
+    payload_path.write_text(
+        """
+{
+  "cameras": [
+    {
+      "id": "cam-legacy",
+      "site_id": "site-local-01",
+      "name": "Legacy Camera",
+      "zone": "Dock",
+      "rtsp_url": "rtsp://camera.local/legacy",
+      "path_name": "cam-legacy",
+      "created_at": "2026-03-08T00:00:00+00:00"
+    }
+  ]
+}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    store = CameraStore(str(payload_path))
+    [camera] = store.list_cameras()
+
+    assert camera.rtsp_transport == "automatic"
+    assert camera.rtsp_any_port is False

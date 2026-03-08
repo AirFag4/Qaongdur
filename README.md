@@ -40,10 +40,12 @@ make logs
 
 Current behavior in this mode:
 
-- Keycloak, control-api, Postgres, Redis, object storage, MediaMTX, and the built web app all run in containers
+- Keycloak, control-api, Postgres, Redis, object storage, MediaMTX, `mock-streamer`, and the built web app all run in containers
 - auth is real
 - camera inventory, device inventory, live tiles, overview metrics, RTSP onboarding, and playback search use the real `control-api`
+- if the sibling `../Video` directory contains `.mp4` files, `mock-streamer` publishes them into MediaMTX as looped RTSP cameras such as `mock-video-people-walking` and `mock-video-vehicles`
 - site-admin and platform-admin users can reconnect or remove cameras from the Devices page
+- RTSP onboarding supports MediaMTX source transport selection (`automatic`, `udp`, `tcp`, `multicast`) plus optional `rtspAnyPort` compatibility mode
 - MediaMTX records rolling segments and serves playback URLs for finalized recordings
 - the local recording volume is pruned oldest-first to stay within the configured `RECORDING_STORAGE_LIMIT_BYTES` budget, default `10 GB`
 - alerts and incidents are still placeholder backend responses rather than a full detection-to-incident pipeline
@@ -72,7 +74,7 @@ Current behavior in this mode:
 - the first `vision` startup after a clean rebuild can take longer than the earlier scaffold because detector and embedder runtimes are installed in the image
 - VLM is skipped in this slice
 
-Optional mock-video publisher only:
+Targeted mock-video publisher restart only:
 
 ```bash
 make mock-video-up
@@ -321,10 +323,11 @@ Healthy stream indicators:
 
 If the path stays `ready=false`, `tracks=[]`, or MediaMTX logs repeated `request timed out`, the RTSP source is failing upstream of the browser.
 
-Current limitation:
+If VLC opens a stream but MediaMTX does not, the transport mode is now the first thing to try from the Devices page:
 
-- `control-api` currently programs MediaMTX with RTSP transport forced to `tcp`
-- some cameras behave better with `udp` or vendor-specific RTSP paths, so VLC can appear stable while the relay later stalls
+- start with `Automatic`
+- if SDP succeeds but TCP setup fails or the relay later stalls, re-add or reconnect with `udp`
+- enable `rtspAnyPort` only for broken cameras that need relaxed UDP server-port handling
 
 If your local `.env` predates the latest Compose changes, refresh it from `.env.example` so keys such as `MEDIAMTX_PLAYBACK_PORT` and the neutral `OBJECT_STORAGE_*` settings are present.
 

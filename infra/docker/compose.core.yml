@@ -138,7 +138,7 @@ services:
     restart: unless-stopped
 
   mock-streamer:
-    profiles: ["mock-video", "mock-stream"]
+    profiles: ["core", "mock-video", "mock-stream"]
     build:
       context: ../..
       dockerfile: services/mock-streamer/Dockerfile

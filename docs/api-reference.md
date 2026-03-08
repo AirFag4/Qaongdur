@@ -106,6 +106,7 @@ All of the following types live in `packages/types/src/index.ts`.
 | `IncidentStatus` | `open`, `triaging`, `investigating`, `resolved` |
 | `AlertStatus` | `new`, `acknowledged`, `investigating`, `resolved` |
 | `DeviceType` | `camera`, `nvr`, `gateway`, `sensor` |
+| `RtspTransport` | `automatic`, `udp`, `multicast`, `tcp` |
 
 ### `Site`
 
@@ -123,6 +124,8 @@ All of the following types live in `packages/types/src/index.ts`.
 - `streamUrl: string`
 - `liveStreamUrl?: string | null`
 - `playbackPath?: string | null`
+- `rtspTransport?: RtspTransport`
+- `rtspAnyPort?: boolean`
 - `health: HealthStatus`
 - `fps: number`
 - `resolution: string`
@@ -245,6 +248,15 @@ All of the following types live in `packages/types/src/index.ts`.
 - `severity?: AlertSeverity | "all"`
 - `status?: AlertStatus | "all"`
 - `search?: string`
+
+### `CreateCameraInput`
+
+- `siteId?: string`
+- `name: string`
+- `zone: string`
+- `rtspUrl: string`
+- `rtspTransport?: RtspTransport`
+- `rtspAnyPort?: boolean`
 
 ### `PlaybackSearchParams`
 

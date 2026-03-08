@@ -1,6 +1,7 @@
 from control_api.mediamtx import (
     MediaMtxClient,
     RecordingSpan,
+    build_camera_path_payload,
     filter_playback_spans,
     path_state_to_health,
 )
@@ -67,3 +68,26 @@ def test_filter_playback_spans_keeps_partial_segments_for_stopped_paths() -> Non
     )
 
     assert filtered == spans
+
+
+def test_build_camera_path_payload_defaults_to_automatic_transport() -> None:
+    payload = build_camera_path_payload(source="rtsp://camera.local/stream")
+
+    assert payload == {
+        "source": "rtsp://camera.local/stream",
+        "rtspTransport": "automatic",
+    }
+
+
+def test_build_camera_path_payload_includes_any_port_when_enabled() -> None:
+    payload = build_camera_path_payload(
+        source="rtsp://camera.local/stream",
+        rtsp_transport="udp",
+        rtsp_any_port=True,
+    )
+
+    assert payload == {
+        "source": "rtsp://camera.local/stream",
+        "rtspTransport": "udp",
+        "rtspAnyPort": True,
+    }

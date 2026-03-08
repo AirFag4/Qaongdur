@@ -7,6 +7,7 @@ export type IncidentStatus =
   | "resolved";
 export type AlertStatus = "new" | "acknowledged" | "investigating" | "resolved";
 export type DeviceType = "camera" | "nvr" | "gateway" | "sensor";
+export type RtspTransport = "automatic" | "udp" | "multicast" | "tcp";
 export type PlatformRole =
   | "platform-admin"
   | "site-admin"
@@ -67,6 +68,8 @@ export interface Camera {
   streamUrl: string;
   liveStreamUrl?: string | null;
   playbackPath?: string | null;
+  rtspTransport?: RtspTransport;
+  rtspAnyPort?: boolean;
   health: HealthStatus;
   fps: number;
   resolution: string;
@@ -204,6 +207,8 @@ export interface CreateCameraInput {
   name: string;
   zone: string;
   rtspUrl: string;
+  rtspTransport?: RtspTransport;
+  rtspAnyPort?: boolean;
 }
 
 export type VisionTrackLabel = "person" | "vehicle";

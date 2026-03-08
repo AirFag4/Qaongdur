@@ -46,17 +46,20 @@ Notes:
 - `object-storage`
 - `object-storage-bootstrap`
 - `mediamtx`
+- `mock-streamer`
 - `recording-pruner`
 
 The `vision` service is available under the `vision-cpu` profile via `make vision-up`.
 The `face-api` service is available under the `face` profile via `make face-up`.
-The `mock-streamer` service is available under the `mock-video` profile via `make mock-video-up`.
+The `mock-streamer` service now starts with the default `core` stack so local `../Video` clips keep publishing after `make docker-up`.
+Use `make mock-video-up` when you want to rebuild or restart only the mock publisher.
 
 ## Current Media Slice
 
 The `core` stack now supports a real RTSP media path:
 
 - add an RTSP camera from the Devices page
+- choose RTSP transport per camera from the Devices page when the source is transport-sensitive
 - reconnect or remove a camera from the Devices page as a `site-admin` or `platform-admin`
 - `control-api` persists the camera and programs MediaMTX
 - live monitoring uses MediaMTX HLS
@@ -160,4 +163,11 @@ Common local failure shape:
 - TCP `554` opens
 - but MediaMTX logs `request timed out` and the path never becomes ready
 
-That usually means the saved RTSP URL, credentials, or transport mode is wrong for that device. Current limitation: `control-api` programs MediaMTX with RTSP transport forced to `tcp`, so cameras that only behave well with `udp` can appear fine in VLC and then stall in the relay.
+That usually means the saved RTSP URL, credentials, or transport mode is wrong for that device.
+
+Current guidance:
+
+- start with `Automatic`
+- if the camera returns SDP but TCP setup fails, use `udp`
+- if UDP negotiation succeeds but packets still do not arrive, try `rtspAnyPort`
+- keep `rtspAnyPort` as a compatibility escape hatch, not the default

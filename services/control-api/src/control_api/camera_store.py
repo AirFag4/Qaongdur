@@ -24,6 +24,8 @@ class CameraRecord:
     system_managed: bool = False
     source_kind: str = "rtsp"
     source_ref: str | None = None
+    rtsp_transport: str = "automatic"
+    rtsp_any_port: bool = False
 
 
 class CameraStore:
@@ -48,6 +50,8 @@ class CameraStore:
         name: str,
         zone: str,
         rtsp_url: str,
+        rtsp_transport: str = "automatic",
+        rtsp_any_port: bool = False,
     ) -> CameraRecord:
         camera_id = f"cam-{uuid4().hex[:10]}"
         return CameraRecord(
@@ -62,6 +66,8 @@ class CameraStore:
             system_managed=False,
             source_kind="rtsp",
             source_ref=None,
+            rtsp_transport=rtsp_transport,
+            rtsp_any_port=rtsp_any_port,
         )
 
     def save_camera(self, camera: CameraRecord) -> None:
@@ -131,6 +137,16 @@ class CameraStore:
                             system_managed=camera.system_managed,
                             source_kind=camera.source_kind,
                             source_ref=camera.source_ref,
+                            rtsp_transport=(
+                                str(existing.get("rtsp_transport"))
+                                if existing and existing.get("rtsp_transport")
+                                else camera.rtsp_transport
+                            ),
+                            rtsp_any_port=bool(
+                                existing.get("rtsp_any_port", camera.rtsp_any_port)
+                            )
+                            if existing
+                            else camera.rtsp_any_port,
                         )
                     )
                 )
