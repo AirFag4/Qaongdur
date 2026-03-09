@@ -52,6 +52,11 @@ export function OperatorLayout() {
   const [liveGridSize, setLiveGridSize] = useState<CameraGridSize>(4);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [recentEvents, setRecentEvents] = useState<RealtimeEvent[]>([]);
+  const [themeMode, setThemeMode] = useState<"polarized-dark" | "polarized-light">(() =>
+    window.localStorage.getItem("qaongdur-theme-mode") === "polarized-light"
+      ? "polarized-light"
+      : "polarized-dark",
+  );
 
   const sites = useQuery({
     queryKey: queryKeys.sites,
@@ -61,6 +66,10 @@ export function OperatorLayout() {
     queryKey: queryKeys.cameras(siteId),
     queryFn: () => apiClient.listCameras(siteId),
   });
+
+  useEffect(() => {
+    window.localStorage.setItem("qaongdur-theme-mode", themeMode);
+  }, [themeMode]);
 
   useEffect(() => {
     const unsubscribe = realtimeSocket.subscribe((event) => {
@@ -200,6 +209,12 @@ export function OperatorLayout() {
           />
         }
         rightRail={<AgentChatRail recentEvents={recentEvents} realtimeMode={realtimeSocket.mode} />}
+        themeMode={themeMode}
+        onToggleThemeMode={() =>
+          setThemeMode((currentMode) =>
+            currentMode === "polarized-dark" ? "polarized-light" : "polarized-dark",
+          )
+        }
       >
         <Outlet context={outletContext} />
       </AppShell>
