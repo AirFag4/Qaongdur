@@ -35,6 +35,8 @@ class VisionServiceClient:
         from_at: str | None = None,
         to_at: str | None = None,
         include_retired: bool = False,
+        page: int | None = None,
+        page_size: int | None = None,
     ) -> dict[str, object]:
         params = {}
         if source_id:
@@ -49,6 +51,10 @@ class VisionServiceClient:
             params["toAt"] = to_at
         if include_retired:
             params["includeRetired"] = "true"
+        if page:
+            params["page"] = str(page)
+        if page_size:
+            params["pageSize"] = str(page_size)
         return await self._get_json("/api/v1/vision/crop-tracks", params=params)
 
     async def get_crop_track(self, track_id: str) -> dict[str, object]:

@@ -75,8 +75,8 @@ The frontend only talks to the data layer through this interface:
 | `listVisionSources()` | none | `Promise<VisionSource[]>` | returns camera-oriented vision sources with MediaMTX relay URLs and processed-segment counts | crop gallery page |
 | `getVisionStatus()` | none | `Promise<VisionPipelineStatus>` | returns detector, embedding, face-sidecar, vector-store, queue, and storage status | crop gallery page |
 | `runVisionMockJob(sourceIds?)` | optional source ids | `Promise<VisionJobStatus>` | requests an immediate recordings scan in backend mode | crop gallery page |
-| `listCropTracks(filter?)` | `CropTrackFilter` | `Promise<CropTrack[]>` | returns stored first, middle, and last crop states per track with time-range filtering and optional retired-history inclusion | crop gallery page |
-| `getCropTrack(trackId)` | track id | `Promise<CropTrackDetail \| undefined>` | returns detailed movement, bbox, and timing info for one track | crop gallery page |
+| `listCropTracks(filter?)` | `CropTrackFilter` | `Promise<CropTrackPage>` | returns paginated crop-track cards with time-range filtering, optional retired-history inclusion, and only the representative middle crop for each row | crop gallery page |
+| `getCropTrack(trackId)` | track id | `Promise<CropTrackDetail \| undefined>` | returns detailed movement, bbox, first/middle/last crop images, and source-frame overlays for one track | crop gallery page |
 | `getSystemSettings()` | none | `Promise<SystemSettings>` | returns the current auth and env-backed runtime settings surface used by the Settings page | settings page |
 
 ### `RealtimeEventSocket`

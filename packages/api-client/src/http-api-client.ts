@@ -3,8 +3,8 @@ import type {
   AlertFilter,
   Camera,
   CropTrackDetail,
-  CropTrack,
   CropTrackFilter,
+  CropTrackPage,
   CreateCameraInput,
   Device,
   Incident,
@@ -148,8 +148,8 @@ export class HttpApiClient implements VmsApiClient {
     });
   }
 
-  async listCropTracks(filter?: CropTrackFilter): Promise<CropTrack[]> {
-    const response = await this._request<{ tracks: CropTrack[] }>(
+  async listCropTracks(filter?: CropTrackFilter): Promise<CropTrackPage> {
+    return this._request<CropTrackPage>(
       appendSearch("/api/v1/vision/crop-tracks", {
         sourceId: filter?.sourceId,
         cameraId: filter?.cameraId,
@@ -157,9 +157,10 @@ export class HttpApiClient implements VmsApiClient {
         fromAt: filter?.fromAt,
         toAt: filter?.toAt,
         includeRetired: filter?.includeRetired ? "true" : undefined,
+        page: filter?.page ? String(filter.page) : undefined,
+        pageSize: filter?.pageSize ? String(filter.pageSize) : undefined,
       }),
     );
-    return response.tracks;
   }
 
   async getCropTrack(trackId: string): Promise<CropTrackDetail | undefined> {

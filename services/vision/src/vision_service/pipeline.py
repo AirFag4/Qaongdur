@@ -66,6 +66,7 @@ class VisionPipelineService:
             artifacts_dir=settings.artifacts_dir,
             crop_jpeg_quality=settings.crop_jpeg_quality,
             crop_max_dimension=settings.crop_max_dimension,
+            frame_max_dimension=settings.frame_max_dimension,
         )
         self._detector = ObjectDetector(
             model_name=settings.detector_model_name,
@@ -225,16 +226,23 @@ class VisionPipelineService:
         from_at: str | None = None,
         to_at: str | None = None,
         include_retired: bool = False,
-    ) -> list[dict[str, object]]:
-        tracks = self._repository.list_crop_tracks(
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, object]:
+        result = self._repository.list_crop_tracks(
             source_id=source_id,
             camera_id=camera_id,
             label=label,
             from_at=from_at,
             to_at=to_at,
             include_retired=include_retired,
+            page=page,
+            page_size=page_size,
         )
-        return [self._serialize_track(track) for track in tracks]
+        return {
+            **result,
+            "tracks": [self._serialize_track(track) for track in result["tracks"]],
+        }
 
     def get_crop_track(self, track_id: str) -> dict[str, object] | None:
         track = self._repository.get_crop_track(track_id)
@@ -303,16 +311,33 @@ class VisionPipelineService:
             "firstPoint": json.loads(track["first_point_json"]) if track.get("first_point_json") else None,
             "middlePoint": json.loads(track["middle_point_json"]) if track.get("middle_point_json") else None,
             "lastPoint": json.loads(track["last_point_json"]) if track.get("last_point_json") else None,
-            "firstCropDataUrl": self._artifact_store.read_as_data_url(assets.get("first")),
             "middleCropDataUrl": self._artifact_store.read_as_data_url(assets.get("middle")),
-            "lastCropDataUrl": self._artifact_store.read_as_data_url(assets.get("last")),
         }
         if include_detail:
             payload.update(
                 {
+                    "firstCropDataUrl": self._artifact_store.read_as_data_url(assets.get("first")),
+                    "lastCropDataUrl": self._artifact_store.read_as_data_url(assets.get("last")),
                     "firstBBox": json.loads(track["first_bbox_json"]),
                     "middleBBox": json.loads(track["middle_bbox_json"]),
                     "lastBBox": json.loads(track["last_bbox_json"]),
+                    "sourceFrameWidth": track.get("source_frame_width"),
+                    "sourceFrameHeight": track.get("source_frame_height"),
+                    "firstFrameDataUrl": (
+                        self._artifact_store.read_as_data_url(assets["frame-first"])
+                        if assets.get("frame-first")
+                        else None
+                    ),
+                    "middleFrameDataUrl": (
+                        self._artifact_store.read_as_data_url(assets["frame-middle"])
+                        if assets.get("frame-middle")
+                        else None
+                    ),
+                    "lastFrameDataUrl": (
+                        self._artifact_store.read_as_data_url(assets["frame-last"])
+                        if assets.get("frame-last")
+                        else None
+                    ),
                     "createdAt": track["created_at"],
                 }
             )
@@ -589,7 +614,17 @@ class VisionPipelineService:
             "middle": self._artifact_store.encode_crop(middle_observation.crop_bgr),
             "last": self._artifact_store.encode_crop(last_observation.crop_bgr),
         }
-        required_bytes = sum(len(payload) for payload in crop_payloads.values())
+        frame_payloads = self._encode_observation_frames(
+            segment_path=segment_path,
+            observations={
+                "frame-first": first_observation,
+                "frame-middle": middle_observation,
+                "frame-last": last_observation,
+            },
+        )
+        required_bytes = sum(len(payload) for payload in crop_payloads.values()) + sum(
+            len(payload) for payload in frame_payloads.values()
+        )
         deleted_paths = self._repository.prune_oldest_tracks_until_fit(
             storage_limit_bytes=self._settings.storage_limit_bytes,
             bytes_needed=required_bytes,
@@ -598,7 +633,7 @@ class VisionPipelineService:
             self._artifact_store.delete_relative_path(relative_path)
 
         artifacts: list[dict[str, object]] = []
-        for role, payload in crop_payloads.items():
+        for role, payload in {**crop_payloads, **frame_payloads}.items():
             relative_path = self._artifact_store.write_bytes(
                 f"tracks/{track.id}/{role}.jpg",
                 payload,
@@ -609,7 +644,7 @@ class VisionPipelineService:
                     "track_id": track.id,
                     "source_id": track.source.id,
                     "role": role,
-                    "kind": "crop",
+                    "kind": "frame" if role.startswith("frame-") else "crop",
                     "relative_path": relative_path,
                     "mime_type": "image/jpeg",
                     "byte_size": len(payload),
@@ -682,7 +717,7 @@ class VisionPipelineService:
                 if face_embedding.status == "ready"
                 else None
             ),
-        )
+                )
 
         with self._vector_store_lock:
             self._vector_store.upsert_object_embedding(
@@ -699,3 +734,26 @@ class VisionPipelineService:
                     captured_at=middle_observation.captured_at,
                     vector=face_embedding.vector,
                 )
+
+    def _encode_observation_frames(
+        self,
+        *,
+        segment_path: str,
+        observations: dict[str, object],
+    ) -> dict[str, bytes]:
+        capture = cv2.VideoCapture(segment_path)
+        if not capture.isOpened():
+            return {}
+
+        payloads: dict[str, bytes] = {}
+        try:
+            for role, observation in observations.items():
+                frame_index = int(getattr(observation, "frame_index"))
+                capture.set(cv2.CAP_PROP_POS_FRAMES, max(frame_index, 0))
+                ok, frame_bgr = capture.read()
+                if not ok:
+                    continue
+                payloads[role] = self._artifact_store.encode_frame(frame_bgr)
+        finally:
+            capture.release()
+        return payloads

@@ -1,13 +1,17 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertRail, Button, CameraGrid, Card, CardDescription, CardTitle, LoadingState } from "@qaongdur/ui";
+import { useSearchParams } from "react-router-dom";
 import { apiClient, queryKeys } from "../lib/api";
 import { useOperatorOutlet } from "../app/use-operator-outlet";
 
 const gridOptions = [1, 4, 9, 16] as const;
 
 export function LiveMonitoringPage() {
-  const { siteId, cameras, selectedCameraIds, liveGridSize, setLiveGridSize } =
+  const { siteId, cameras, selectedCameraIds, liveGridSize, setLiveGridSize, setSelectedCameraIds } =
     useOperatorOutlet();
+  const [searchParams] = useSearchParams();
+  const cameraIdParam = searchParams.get("cameraId");
 
   const liveTiles = useQuery({
     queryKey: queryKeys.liveTiles(siteId),
@@ -17,6 +21,20 @@ export function LiveMonitoringPage() {
     queryKey: queryKeys.alerts({ siteId, status: "new" }),
     queryFn: () => apiClient.listAlerts({ siteId, status: "new" }),
   });
+
+  useEffect(() => {
+    if (!cameraIdParam) {
+      return;
+    }
+    const cameraExists = cameras.some((camera) => camera.id === cameraIdParam);
+    if (!cameraExists) {
+      return;
+    }
+    if (selectedCameraIds.length === 1 && selectedCameraIds[0] === cameraIdParam) {
+      return;
+    }
+    setSelectedCameraIds([cameraIdParam]);
+  }, [cameraIdParam, cameras, selectedCameraIds, setSelectedCameraIds]);
 
   if (liveTiles.isLoading || !liveTiles.data) {
     return <LoadingState label="Loading live camera streams..." />;

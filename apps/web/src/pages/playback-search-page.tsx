@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Card, CardDescription, CardTitle, EmptyState, FilterBar, FilterField, LoadingState } from "@qaongdur/ui";
 import type { PlaybackSearchParams } from "@qaongdur/types";
+import { useSearchParams } from "react-router-dom";
 import { apiClient, queryKeys } from "../lib/api";
 import { useOperatorOutlet } from "../app/use-operator-outlet";
 
@@ -25,6 +26,7 @@ type PlaybackForm = z.infer<typeof playbackSchema>;
 
 export function PlaybackSearchPage() {
   const { cameras, selectedCameraIds } = useOperatorOutlet();
+  const [searchParams] = useSearchParams();
   const [initialWindow] = useState(() => {
     const now = Date.now();
     return {
@@ -55,6 +57,32 @@ export function PlaybackSearchPage() {
     () => new Map(cameras.map((camera) => [camera.id, camera.name])),
     [cameras],
   );
+  const playbackPreset = useMemo<PlaybackSearchParams | null>(() => {
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const cameraId = searchParams.get("cameraId");
+    const includeAlerts = searchParams.get("includeAlerts") !== "false";
+
+    if (!from || !to) {
+      return null;
+    }
+
+    const fromTimestamp = Date.parse(from);
+    const toTimestamp = Date.parse(to);
+    if (Number.isNaN(fromTimestamp) || Number.isNaN(toTimestamp) || fromTimestamp >= toTimestamp) {
+      return null;
+    }
+
+    const cameraIds =
+      cameraId && cameras.some((camera) => camera.id === cameraId) ? [cameraId] : [];
+
+    return {
+      cameraIds,
+      from: new Date(fromTimestamp).toISOString(),
+      to: new Date(toTimestamp).toISOString(),
+      includeAlerts,
+    };
+  }, [cameras, searchParams]);
 
   useEffect(() => {
     const validCameraIds = new Set(cameras.map((camera) => camera.id));
@@ -66,6 +94,19 @@ export function PlaybackSearchPage() {
       return selectedCameraIds.filter((cameraId) => validCameraIds.has(cameraId));
     });
   }, [cameras, selectedCameraIds]);
+
+  useEffect(() => {
+    if (!playbackPreset) {
+      return;
+    }
+    setPlaybackCameraIds(playbackPreset.cameraIds);
+    form.reset({
+      from: toInputValue(new Date(playbackPreset.from)),
+      to: toInputValue(new Date(playbackPreset.to)),
+      includeAlerts: playbackPreset.includeAlerts,
+    });
+    setActiveParams(playbackPreset);
+  }, [form, playbackPreset]);
 
   const selectedSegment =
     playback.data?.find((segment) => segment.id === selectedSegmentId) ?? playback.data?.[0];

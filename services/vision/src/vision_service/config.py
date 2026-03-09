@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     storage_limit_bytes: int = 10 * 1024 * 1024 * 1024
     crop_jpeg_quality: int = 85
     crop_max_dimension: int = 320
+    frame_max_dimension: int = 960
     embedding_enabled: bool = True
     embedding_model_name: str = "MobileCLIP2-S0"
     face_enabled: bool = True

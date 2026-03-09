@@ -183,6 +183,7 @@ export function OperatorLayout() {
       setSiteId(nextSiteId);
       setSelectedCameraIds([]);
     },
+    setSelectedCameraIds,
     toggleCameraSelection,
     setLiveGridSize,
     openCommandPalette: () => setCommandPaletteOpen(true),

@@ -28,6 +28,18 @@ Run this prompt before:
 
 Treat this prompt as the next major feature wave. It can be extended later, but do not skip ahead to agent chat until the data model, search surfaces, and investigation UI here are stable.
 
+## Current Starting Point
+
+Workstream A has already started in the current repo state:
+
+- the crop gallery is paginated at `20` tracks per page
+- the gallery list only fetches the representative middle crop for each card
+- clicking a crop card opens a closable investigation modal
+- the detail fetch already returns stored source-frame snapshots plus bbox overlays for `start`, `middle`, and `end`
+- the detail view can already jump into source live and playback routes using query-parameter pivots
+
+Continue from that foundation instead of rebuilding the crop page from scratch.
+
 ## Product Direction
 
 The current crop page is only a first inspection surface. Replace that narrow flow with a broader investigation model:

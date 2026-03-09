@@ -45,6 +45,8 @@ pnpm --filter @qaongdur/web dev
 - alerts and incidents still return placeholder backend responses while the full detection and incident pipeline is being built
 - the Devices page exposes reconnect and remove actions only for `site-admin` and `platform-admin`
 - the Crop Gallery now keeps draft filters locally and runs the query only when `Search Crops` is pressed
+- the Crop Gallery is paginated at 20 tracks per page and only loads the representative middle crop for the grid view
+- clicking a crop card opens a closable investigation modal that fetches the track detail lazily, including start/middle/end source-frame overlays and direct pivots into live or playback
 - the Playback page now has its own camera selection controls instead of relying only on the site sidebar
 
 ## Build And Lint

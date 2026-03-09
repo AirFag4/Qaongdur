@@ -778,6 +778,8 @@ def create_app() -> FastAPI:
         fromAt: str | None = None,
         toAt: str | None = None,
         includeRetired: bool = False,
+        page: int = 1,
+        pageSize: int = 20,
     ) -> dict[str, object]:
         try:
             return await vision_client.list_crop_tracks(
@@ -787,6 +789,8 @@ def create_app() -> FastAPI:
                 from_at=fromAt,
                 to_at=toAt,
                 include_retired=includeRetired,
+                page=page,
+                page_size=pageSize,
             )
         except VisionServiceError as error:
             raise raise_vision_bad_gateway(error) from error

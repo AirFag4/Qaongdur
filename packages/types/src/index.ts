@@ -292,6 +292,8 @@ export interface CropTrackFilter {
   fromAt?: string;
   toAt?: string;
   includeRetired?: boolean;
+  page?: number;
+  pageSize?: number;
 }
 
 export interface CropTrack {
@@ -328,15 +330,30 @@ export interface CropTrack {
   firstPoint?: { x: number; y: number } | null;
   middlePoint?: { x: number; y: number } | null;
   lastPoint?: { x: number; y: number } | null;
-  firstCropDataUrl: string;
+  firstCropDataUrl?: string;
   middleCropDataUrl: string;
-  lastCropDataUrl: string;
+  lastCropDataUrl?: string;
+}
+
+export interface CropTrackPage {
+  tracks: CropTrack[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 export interface CropTrackDetail extends CropTrack {
+  firstCropDataUrl: string;
+  lastCropDataUrl: string;
   firstBBox?: [number, number, number, number];
   middleBBox?: [number, number, number, number];
   lastBBox?: [number, number, number, number];
+  sourceFrameWidth?: number | null;
+  sourceFrameHeight?: number | null;
+  firstFrameDataUrl?: string | null;
+  middleFrameDataUrl?: string | null;
+  lastFrameDataUrl?: string | null;
   createdAt?: string;
 }
 
@@ -388,7 +405,7 @@ export interface VmsApiClient {
   listVisionSources(): Promise<VisionSource[]>;
   getVisionStatus(): Promise<VisionPipelineStatus>;
   runVisionMockJob(sourceIds?: string[]): Promise<VisionJobStatus>;
-  listCropTracks(filter?: CropTrackFilter): Promise<CropTrack[]>;
+  listCropTracks(filter?: CropTrackFilter): Promise<CropTrackPage>;
   getCropTrack(trackId: string): Promise<CropTrackDetail | undefined>;
   getSystemSettings(): Promise<SystemSettings>;
 }

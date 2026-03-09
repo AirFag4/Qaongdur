@@ -14,14 +14,27 @@ class ArtifactStore:
         artifacts_dir: str,
         crop_jpeg_quality: int,
         crop_max_dimension: int,
+        frame_max_dimension: int,
     ) -> None:
         self._root = Path(artifacts_dir)
         self._root.mkdir(parents=True, exist_ok=True)
         self._jpeg_quality = crop_jpeg_quality
         self._crop_max_dimension = crop_max_dimension
+        self._frame_max_dimension = frame_max_dimension
 
     def encode_crop(self, crop_bgr: np.ndarray) -> bytes:
-        image = self._resize_crop(crop_bgr)
+        image = self._resize_image(crop_bgr, self._crop_max_dimension)
+        ok, buffer = cv2.imencode(
+            ".jpg",
+            image,
+            [int(cv2.IMWRITE_JPEG_QUALITY), self._jpeg_quality],
+        )
+        if not ok:
+            raise RuntimeError("Failed to encode crop artifact.")
+        return bytes(buffer)
+
+    def encode_frame(self, frame_bgr: np.ndarray) -> bytes:
+        image = self._resize_image(frame_bgr, self._frame_max_dimension)
         ok, buffer = cv2.imencode(
             ".jpg",
             image,
@@ -46,14 +59,14 @@ class ArtifactStore:
         payload = (self._root / relative_path).read_bytes()
         return f"data:image/jpeg;base64,{b64encode(payload).decode('ascii')}"
 
-    def _resize_crop(self, crop_bgr: np.ndarray) -> np.ndarray:
-        height, width = crop_bgr.shape[:2]
+    def _resize_image(self, image_bgr: np.ndarray, max_dimension: int) -> np.ndarray:
+        height, width = image_bgr.shape[:2]
         max_dim = max(height, width)
-        if max_dim <= self._crop_max_dimension:
-            return crop_bgr
-        scale = self._crop_max_dimension / max_dim
+        if max_dim <= max_dimension:
+            return image_bgr
+        scale = max_dimension / max_dim
         resized = cv2.resize(
-            crop_bgr,
+            image_bgr,
             (max(1, int(width * scale)), max(1, int(height * scale))),
             interpolation=cv2.INTER_AREA,
         )

@@ -9,6 +9,7 @@ export interface OperatorOutletContext {
   liveGridSize: CameraGridSize;
   recentEvents: RealtimeEvent[];
   setSiteId: (siteId: string | undefined) => void;
+  setSelectedCameraIds: (cameraIds: string[]) => void;
   toggleCameraSelection: (cameraId: string) => void;
   setLiveGridSize: (size: CameraGridSize) => void;
   openCommandPalette: () => void;

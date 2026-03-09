@@ -5,6 +5,7 @@ import type {
   CropTrackDetail,
   CropTrack,
   CropTrackFilter,
+  CropTrackPage,
   CreateCameraInput,
   PlaybackSearchParams,
   PlaybackSegment,
@@ -184,6 +185,11 @@ const matchesSearch = (alert: AlertEvent, query?: string) => {
   }
   const text = `${alert.title} ${alert.summary} ${alert.rule}`.toLowerCase();
   return text.includes(query.toLowerCase());
+};
+
+const toCropTrackSummary = (track: CropTrack): CropTrack => {
+  const { firstCropDataUrl: _firstCropDataUrl, lastCropDataUrl: _lastCropDataUrl, ...summary } = track;
+  return summary;
 };
 
 export class MockVmsApiClient implements VmsApiClient {
@@ -498,9 +504,9 @@ export class MockVmsApiClient implements VmsApiClient {
     };
   }
 
-  async listCropTracks(filter?: CropTrackFilter): Promise<CropTrack[]> {
+  async listCropTracks(filter?: CropTrackFilter): Promise<CropTrackPage> {
     await sleep(networkDelay());
-    return mockCropTracks.filter((track) => {
+    const filtered = mockCropTracks.filter((track) => {
       if (filter?.sourceId && track.sourceId !== filter.sourceId) {
         return false;
       }
@@ -518,6 +524,19 @@ export class MockVmsApiClient implements VmsApiClient {
       }
       return true;
     });
+    const pageSize = Math.max(filter?.pageSize ?? 20, 1);
+    const page = Math.max(filter?.page ?? 1, 1);
+    const totalCount = filtered.length;
+    const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
+    const safePage = Math.min(page, totalPages);
+    const startIndex = (safePage - 1) * pageSize;
+    return {
+      tracks: filtered.slice(startIndex, startIndex + pageSize).map(toCropTrackSummary),
+      totalCount,
+      page: safePage,
+      pageSize,
+      totalPages,
+    };
   }
 
   async getCropTrack(trackId: string): Promise<CropTrackDetail | undefined> {
@@ -528,6 +547,8 @@ export class MockVmsApiClient implements VmsApiClient {
     }
     return {
       ...track,
+      firstCropDataUrl: track.firstCropDataUrl!,
+      lastCropDataUrl: track.lastCropDataUrl!,
       firstBBox: [20, 40, 120, 220],
       middleBBox: [42, 48, 136, 228],
       lastBBox: [60, 52, 152, 236],

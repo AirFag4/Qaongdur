@@ -78,7 +78,9 @@ Current behavior in this mode:
 - track association now uses `supervision` `ByteTrack` from the vendored `third_party/supervision` submodule
 - tracks are sampled at `1-3 fps` per source, default `2 fps`
 - recorded chunks are queued newest-first, and worker count is configurable through `VISION_SEGMENT_WORKER_COUNT`
-- the `/crops` page now supports time-range search, track selection, and movement-point detail for first, middle, and last saved observations
+- the `/crops` page now supports time-range search, 20-track pagination, and a closable investigation modal for first, middle, and last saved observations
+- the crop list only loads the representative middle crop for each card; opening a track fetches the heavier first/middle/last crop set plus source-frame overlays on demand
+- the investigation modal can pivot directly into the source live view or a playback query scoped to that track window
 - the `/crops` page hides retired mock-source history by default and exposes an `Include retired history` toggle when you want older rows back
 - embeddings are computed from object crops only
 - the face stage only attempts one embedding per person track after the minimum dwell window
@@ -227,7 +229,7 @@ Implemented the first real Task 03 vision-processing path:
 - crop artifacts and track metadata are persisted in a local SQLite-backed store under the `vision-data` volume
 - object embeddings are computed from crop images only, with a deterministic fallback when MobileCLIP2 weights are unavailable
 - face embedding is gated to person tracks that survive long enough and is attempted only once per track through a separate `face-api` sidecar backed by the vendored `third_party/InspireFace` submodule
-- a new `/crops` page in the web console exposes the stored track cards and vision runtime status
+- a new `/crops` page in the web console exposes paginated track cards, a closable investigation modal with source-frame bbox overlays, and vision runtime status
 
 Current limitations of this slice:
 

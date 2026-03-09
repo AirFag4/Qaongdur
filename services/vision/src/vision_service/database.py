@@ -567,7 +567,9 @@ class VisionRepository:
         from_at: str | None = None,
         to_at: str | None = None,
         include_retired: bool = False,
-    ) -> list[dict[str, Any]]:
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
         conditions: list[str] = []
         params: list[Any] = []
         if not include_retired:
@@ -588,18 +590,41 @@ class VisionRepository:
             conditions.append("track.first_seen_at <= ?")
             params.append(to_at)
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        page_size = max(page_size, 1)
+        page = max(page, 1)
+        offset = (page - 1) * page_size
         with self._connect() as connection:
+            count_row = connection.execute(
+                f"""
+                SELECT COUNT(*) AS total_count
+                FROM track
+                JOIN video_source AS source ON source.id = track.source_id
+                {where_clause}
+                """,
+                params,
+            ).fetchone()
+            total_count = int(count_row["total_count"] if count_row else 0)
+            total_pages = max((total_count + page_size - 1) // page_size, 1)
+            safe_page = min(page, total_pages)
+            safe_offset = (safe_page - 1) * page_size
             track_rows = connection.execute(
                 f"""
-                SELECT track.*
+                SELECT track.*, source.frame_width AS source_frame_width, source.frame_height AS source_frame_height
                 FROM track
                 JOIN video_source AS source ON source.id = track.source_id
                 {where_clause}
                 ORDER BY track.last_seen_at DESC
+                LIMIT ? OFFSET ?
                 """,
-                params,
+                [*params, page_size, safe_offset],
             ).fetchall()
-            return [self._hydrate_track(connection, dict(track_row)) for track_row in track_rows]
+            return {
+                "tracks": [self._hydrate_track(connection, dict(track_row)) for track_row in track_rows],
+                "totalCount": total_count,
+                "page": safe_page,
+                "pageSize": page_size,
+                "totalPages": total_pages,
+            }
 
     def purge_retired_sources(
         self,
@@ -640,7 +665,13 @@ class VisionRepository:
     def get_crop_track(self, track_id: str) -> dict[str, Any] | None:
         with self._connect() as connection:
             track_row = connection.execute(
-                "SELECT * FROM track WHERE id = ? LIMIT 1",
+                """
+                SELECT track.*, source.frame_width AS source_frame_width, source.frame_height AS source_frame_height
+                FROM track
+                JOIN video_source AS source ON source.id = track.source_id
+                WHERE track.id = ?
+                LIMIT 1
+                """,
                 (track_id,),
             ).fetchone()
             if track_row is None:

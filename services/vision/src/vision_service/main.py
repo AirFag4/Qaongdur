@@ -75,19 +75,19 @@ def create_app() -> FastAPI:
         fromAt: str | None = None,
         toAt: str | None = None,
         includeRetired: bool = False,
+        page: int = 1,
+        pageSize: int = 20,
     ) -> dict[str, object]:
-        tracks = pipeline.list_crop_tracks(
+        return pipeline.list_crop_tracks(
             source_id=sourceId,
             camera_id=cameraId,
             label=label,
             from_at=fromAt,
             to_at=toAt,
             include_retired=includeRetired,
+            page=page,
+            page_size=pageSize,
         )
-        return {
-            "count": len(tracks),
-            "tracks": tracks,
-        }
 
     @app.get("/api/v1/vision/crop-tracks/{track_id}")
     async def get_crop_track(track_id: str) -> dict[str, object]:

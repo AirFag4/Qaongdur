@@ -48,7 +48,9 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 - tracks are sampled at `1-3 fps`, default `2 fps`
 - segment scheduling prioritizes newer recorded chunks first, and worker count is configurable through `VISION_SEGMENT_WORKER_COUNT`
 - each closed track stores first, middle, and last crop images
-- the `/crops` page uses the middle crop as the representative card image and keeps first and last timestamps in metadata
+- `GET /api/v1/vision/crop-tracks` is paginated and returns only the representative middle crop for each card so the gallery stays responsive
+- `GET /api/v1/vision/crop-tracks/{track_id}` returns the full first/middle/last crop set plus saved source-frame snapshots and bbox metadata for the investigation modal
+- the `/crops` page uses the middle crop as the representative card image and opens a closable investigation modal for detailed review
 - the `/crops` page hides retired mock-source history by default and exposes an `Include retired history` toggle
 - embeddings are computed from crop images only
 - face extraction is attempted once per qualifying person track through the separate `face-api` sidecar
