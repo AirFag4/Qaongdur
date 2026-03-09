@@ -4,8 +4,9 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from itertools import count
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Empty, PriorityQueue
 from threading import Event, Lock, Thread
 import time
 from uuid import uuid4
@@ -92,22 +93,34 @@ class VisionPipelineService:
             base_url=settings.control_api_url,
             internal_token=settings.internal_service_token,
         )
-        self._task_queue: Queue[SegmentTask] = Queue()
+        self._task_queue: PriorityQueue[tuple[float, int, SegmentTask]] = PriorityQueue()
+        self._task_sequence = count()
         self._wake_scanner = Event()
         self._job_lock = Lock()
+        self._detector_lock = Lock()
+        self._embedding_lock = Lock()
+        self._vector_store_lock = Lock()
         self._latest_source_sync_at: str | None = None
         self._latest_source_sync_error: str | None = None
-        self._worker_thread = Thread(target=self._worker_loop, daemon=True, name="vision-worker")
+        self._worker_threads = [
+            Thread(
+                target=self._worker_loop,
+                daemon=True,
+                name=f"vision-worker-{index + 1}",
+            )
+            for index in range(max(self._settings.segment_worker_count, 1))
+        ]
         self._scanner_thread = Thread(target=self._scanner_loop, daemon=True, name="vision-scanner")
         try:
             self.refresh_sources()
         except Exception as error:  # pragma: no cover - startup dependency path
             self._latest_source_sync_error = str(error)
             LOGGER.warning("Initial vision source sync failed: %s", error)
-        self._worker_thread.start()
+        for worker_thread in self._worker_threads:
+            worker_thread.start()
         self._scanner_thread.start()
 
-    def refresh_sources(self) -> list[dict[str, object]]:
+    def refresh_sources(self, *, include_retired: bool = False) -> list[dict[str, object]]:
         sources = self._source_client.list_sources()
         self._repository.sync_sources(
             [
@@ -129,15 +142,20 @@ class VisionPipelineService:
                     "source_fps": source.source_fps,
                     "updated_at": utcnow_iso(),
                     "last_segment_at": None,
+                    "retired_at": None,
                 }
                 for source in sources
             ]
         )
+        if self._settings.purge_retired_mock_history:
+            deleted_paths = self._repository.purge_retired_sources(source_kind="mock-video")
+            for relative_path in deleted_paths:
+                self._artifact_store.delete_relative_path(relative_path)
         self._latest_source_sync_at = utcnow_iso()
         self._latest_source_sync_error = None
-        return self.list_sources()
+        return self.list_sources(include_retired=include_retired)
 
-    def list_sources(self) -> list[dict[str, object]]:
+    def list_sources(self, *, include_retired: bool = False) -> list[dict[str, object]]:
         return [
             {
                 "id": row["id"],
@@ -154,8 +172,9 @@ class VisionPipelineService:
                 "processedSegmentCount": row["processed_segment_count"],
                 "latestProcessedAt": row["latest_processed_at"],
                 "lastSegmentAt": row["last_segment_at"],
+                "retiredAt": row.get("retired_at"),
             }
-            for row in self._repository.list_sources()
+            for row in self._repository.list_sources(include_retired=include_retired)
         ]
 
     def get_status(self) -> dict[str, object]:
@@ -190,6 +209,7 @@ class VisionPipelineService:
                 "error": self._latest_source_sync_error,
             },
             "queueDepth": self._task_queue.qsize(),
+            "segmentWorkerCount": max(self._settings.segment_worker_count, 1),
             "sampleFps": min(
                 max(self._settings.sample_fps, self._settings.min_sample_fps),
                 self._settings.max_sample_fps,
@@ -204,6 +224,7 @@ class VisionPipelineService:
         label: str | None = None,
         from_at: str | None = None,
         to_at: str | None = None,
+        include_retired: bool = False,
     ) -> list[dict[str, object]]:
         tracks = self._repository.list_crop_tracks(
             source_id=source_id,
@@ -211,6 +232,7 @@ class VisionPipelineService:
             label=label,
             from_at=from_at,
             to_at=to_at,
+            include_retired=include_retired,
         )
         return [self._serialize_track(track) for track in tracks]
 
@@ -334,11 +356,16 @@ class VisionPipelineService:
                 frame_height=int(row["frame_height"]),
                 source_fps=float(row["source_fps"]),
             )
-            for row in self._repository.list_sources()
+            for row in self._repository.list_sources(include_retired=False)
         }
 
         now = time.time()
-        for segment_path in sorted(recordings_root.rglob("*.mp4")):
+        segment_paths = sorted(
+            recordings_root.rglob("*.mp4"),
+            key=lambda candidate: candidate.stat().st_mtime,
+            reverse=True,
+        )
+        for segment_path in segment_paths:
             try:
                 relative_path = segment_path.relative_to(recordings_root)
             except ValueError:
@@ -370,19 +397,19 @@ class VisionPipelineService:
             if not is_new:
                 continue
 
-            self._task_queue.put(
+            self._enqueue_segment_task(
                 SegmentTask(
                     source=source,
                     segment_path=str(segment_path),
                     segment_start_at=segment_start_at.isoformat(),
                     byte_size=segment_path.stat().st_size,
-                )
+                ),
             )
 
     def _worker_loop(self) -> None:
         while True:
             try:
-                task = self._task_queue.get(timeout=1.0)
+                _, _, task = self._task_queue.get(timeout=1.0)
             except Empty:
                 continue
 
@@ -392,6 +419,13 @@ class VisionPipelineService:
                 LOGGER.exception("Vision segment processing failed for %s", task.segment_path)
             finally:
                 self._task_queue.task_done()
+
+    def _enqueue_segment_task(self, task: SegmentTask) -> None:
+        try:
+            priority = -datetime.fromisoformat(task.segment_start_at.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            priority = 0.0
+        self._task_queue.put((priority, next(self._task_sequence), task))
 
     def _process_segment(self, task: SegmentTask) -> None:
         sample_fps = min(
@@ -501,7 +535,8 @@ class VisionPipelineService:
                     offset_ms = int((frame_index / capture_fps) * 1000)
                 last_offset_ms = max(last_offset_ms, offset_ms)
                 captured_at = (segment_start_dt + timedelta(milliseconds=offset_ms)).astimezone(UTC).isoformat()
-                detections = self._detector.detect(frame_bgr)
+                with self._detector_lock:
+                    detections = self._detector.detect(frame_bgr)
                 closed_tracks = tracker.update(
                     frame_index=frame_index,
                     offset_ms=offset_ms,
@@ -582,7 +617,8 @@ class VisionPipelineService:
                 }
             )
 
-        embedding = self._embedder.embed(middle_observation.crop_bgr)
+        with self._embedding_lock:
+            embedding = self._embedder.embed(middle_observation.crop_bgr)
         face_embedding = self._face_embedder.maybe_embed(
             label=track.label,
             duration_seconds=track.duration_seconds,
@@ -648,17 +684,18 @@ class VisionPipelineService:
             ),
         )
 
-        self._vector_store.upsert_object_embedding(
-            track_id=track.id,
-            camera_id=track.source.camera_id,
-            label=track.label,
-            captured_at=middle_observation.captured_at,
-            vector=embedding.vector,
-        )
-        if face_embedding.status == "ready" and face_embedding.vector:
-            self._vector_store.upsert_face_embedding(
+        with self._vector_store_lock:
+            self._vector_store.upsert_object_embedding(
                 track_id=track.id,
                 camera_id=track.source.camera_id,
+                label=track.label,
                 captured_at=middle_observation.captured_at,
-                vector=face_embedding.vector,
+                vector=embedding.vector,
             )
+            if face_embedding.status == "ready" and face_embedding.vector:
+                self._vector_store.upsert_face_embedding(
+                    track_id=track.id,
+                    camera_id=track.source.camera_id,
+                    captured_at=middle_observation.captured_at,
+                    vector=face_embedding.vector,
+                )

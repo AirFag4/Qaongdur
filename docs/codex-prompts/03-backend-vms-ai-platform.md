@@ -60,7 +60,13 @@ Use:
 - MediaMTX for stream relay
 - FFmpeg or PyAV for frame extraction and clip processing
 
-Use `pgvector` inside Postgres if you need semantic search later. Do not add a separate vector database yet.
+Keep relational metadata in Postgres, but use one vector store for embedding search.
+
+Repo direction now:
+
+- use `Qdrant` for object and face vector search
+- do not introduce a second vector database for the current milestone
+- only revisit `pgvector` later if consolidation clearly outweighs the operational cost
 
 ## Core Domain Areas
 
@@ -194,7 +200,7 @@ After the first RTSP onboarding and MediaMTX slice is in place, the next backend
 - make RTSP transport selectable per camera instead of hard-coding relay sessions to `tcp`
 - expose stream probe and failure diagnostics so the UI can show why a camera is not ready
 - add stall detection and controlled auto-reconnect for streams that freeze after initial success
-- migrate the current mock-video track store and embedding tables from SQLite into Postgres plus `pgvector`
+- migrate the current mock-video track store into Postgres while keeping vector search in `Qdrant`
 - reduce the first-boot cost of the `face-api` sidecar by replacing runtime compilation with a more reproducible packaged build path
 - turn the current ROI schema design into persisted polygon editing and track-intersection filtering
 - replace the temporary IoU tracker with a stronger reusable tracking package once the local dependency is available in the workspace

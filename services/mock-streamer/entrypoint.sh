@@ -5,6 +5,7 @@ target_base_url="${MOCK_STREAM_TARGET_BASE_URL:-rtsp://mediamtx:8554}"
 video_dir="${MOCK_STREAM_VIDEO_DIR:-/mock-videos}"
 path_prefix="${MOCK_STREAM_PATH_PREFIX:-mock-video}"
 synthetic_path="${MOCK_STREAM_SYNTHETIC_PATH:-mock-demo}"
+max_sources="${MOCK_STREAM_MAX_SOURCES:-1}"
 width="${MOCK_STREAM_WIDTH:-1280}"
 height="${MOCK_STREAM_HEIGHT:-720}"
 fps="${MOCK_STREAM_FPS:-15}"
@@ -174,13 +175,25 @@ if [ -d "${video_dir}" ]; then
 
   if [ -s "${tmp_candidates}" ]; then
     sort -t "	" -k1,1 -k2,2 -k3,3nr "${tmp_candidates}" \
-      | awk -F "	" -v wanted="${selected_group}" '$1 == wanted && !seen[$2]++ { print $4 }' \
+      | awk -F "	" -v wanted="${selected_group}" '$1 == wanted && !seen[$2]++ { print $3 "\t" $4 }' \
       > "${tmp_selected}"
+
+    case "${max_sources}" in
+      ''|*[!0-9]*)
+        max_sources=1
+        ;;
+    esac
+
+    sort -t "	" -k1,1nr -k2,2 "${tmp_selected}" -o "${tmp_selected}"
+    if [ "${max_sources}" -gt 0 ]; then
+      head -n "${max_sources}" "${tmp_selected}" > "${tmp_selected}.limited"
+      mv "${tmp_selected}.limited" "${tmp_selected}"
+    fi
 
     OLD_IFS="${IFS}"
     IFS='
 '
-    for file_path in $(cat "${tmp_selected}"); do
+    for file_path in $(cut -f2 "${tmp_selected}"); do
       [ -f "${file_path}" ] || continue
       publish_file_loop "${file_path}" &
       publishers_started=$((publishers_started + 1))

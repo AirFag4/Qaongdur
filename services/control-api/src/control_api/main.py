@@ -326,7 +326,10 @@ def _discover_mock_video_files(root: Path) -> list[Path]:
         existing = deduped_by_stem.get(file_path.stem)
         if existing is None or file_path.stat().st_size > existing.stat().st_size:
             deduped_by_stem[file_path.stem] = file_path
-    return sorted(deduped_by_stem.values(), key=lambda file_path: file_path.name.lower())
+    return sorted(
+        deduped_by_stem.values(),
+        key=lambda file_path: (-file_path.stat().st_size, file_path.name.lower()),
+    )
 
 
 def _discover_mock_video_cameras(settings: Settings) -> list[CameraRecord]:
@@ -338,7 +341,11 @@ def _discover_mock_video_cameras(settings: Settings) -> list[CameraRecord]:
         return []
 
     cameras: list[CameraRecord] = []
-    for file_path in _discover_mock_video_files(root):
+    discovered_files = _discover_mock_video_files(root)
+    if settings.mock_video_max_sources > 0:
+        discovered_files = discovered_files[: settings.mock_video_max_sources]
+
+    for file_path in discovered_files:
         stem = _build_mock_video_slug(file_path.stem)
         if not stem:
             continue
@@ -770,6 +777,7 @@ def create_app() -> FastAPI:
         label: str | None = None,
         fromAt: str | None = None,
         toAt: str | None = None,
+        includeRetired: bool = False,
     ) -> dict[str, object]:
         try:
             return await vision_client.list_crop_tracks(
@@ -778,6 +786,7 @@ def create_app() -> FastAPI:
                 label=label,
                 from_at=fromAt,
                 to_at=toAt,
+                include_retired=includeRetired,
             )
         except VisionServiceError as error:
             raise raise_vision_bad_gateway(error) from error

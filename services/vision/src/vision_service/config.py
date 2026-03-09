@@ -25,9 +25,11 @@ class Settings(BaseSettings):
     mock_video_rtsp_base_url: str = "rtsp://mediamtx:8554"
     mock_video_path_prefix: str = "mock-video"
     mock_video_use_vms: bool = True
+    mock_video_max_sources: int = 1
     recordings_dir: str = "/recordings"
     segment_poll_interval_seconds: float = 10.0
     segment_min_age_seconds: float = 5.0
+    segment_worker_count: int = 1
     data_dir: str = "./data"
     database_path: str = "./data/vision.sqlite3"
     artifacts_dir: str = "./data/artifacts"
@@ -56,6 +58,7 @@ class Settings(BaseSettings):
     vector_store_timeout_seconds: float = 10.0
     vector_store_object_collection: str = "qaongdur-object-embeddings"
     vector_store_face_collection: str = "qaongdur-face-embeddings"
+    purge_retired_mock_history: bool = False
 
     def ensure_directories(self) -> None:
         Path(self.data_dir).mkdir(parents=True, exist_ok=True)

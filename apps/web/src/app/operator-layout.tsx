@@ -5,7 +5,6 @@ import type { CameraGridSize, CommandPaletteItem } from "@qaongdur/ui";
 import {
   AppShell,
   type AppNavItem,
-  Button,
   CommandPalette,
   LoadingState,
   SiteCameraSwitcher,
@@ -200,8 +199,7 @@ export function OperatorLayout() {
             onCameraToggle={toggleCameraSelection}
           />
         }
-        rightRail={<AgentChatRail recentEvents={recentEvents} />}
-        headerActions={<Button size="sm" variant="secondary" onClick={() => navigate("/settings")}>Settings</Button>}
+        rightRail={<AgentChatRail recentEvents={recentEvents} realtimeMode={realtimeSocket.mode} />}
       >
         <Outlet context={outletContext} />
       </AppShell>

@@ -10,7 +10,13 @@ import {
   requestEvidenceExport,
 } from "../lib/control-api";
 
-export function AgentChatRail({ recentEvents }: { recentEvents: RealtimeEvent[] }) {
+export function AgentChatRail({
+  recentEvents,
+  realtimeMode,
+}: {
+  recentEvents: RealtimeEvent[];
+  realtimeMode: "mock" | "disabled";
+}) {
   const auth = useAuth();
   const accessToken = auth.session?.accessToken;
   const exportMutation = useMutation({
@@ -108,7 +114,9 @@ export function AgentChatRail({ recentEvents }: { recentEvents: RealtimeEvent[] 
       <Card className="flex-1 space-y-2 overflow-hidden">
         <div className="flex items-center justify-between">
           <CardTitle>Realtime Feed</CardTitle>
-          <CardDescription>Mock websocket events</CardDescription>
+          <CardDescription>
+            {realtimeMode === "mock" ? "Mock websocket events" : "Realtime websocket not wired yet"}
+          </CardDescription>
         </div>
         <div className="max-h-[48vh] space-y-2 overflow-auto pr-1">
           {recentEvents.length ? (
@@ -123,7 +131,11 @@ export function AgentChatRail({ recentEvents }: { recentEvents: RealtimeEvent[] 
               </div>
             ))
           ) : (
-            <p className="text-xs text-stone-500">Waiting for events...</p>
+            <p className="text-xs text-stone-500">
+              {realtimeMode === "mock"
+                ? "Waiting for events..."
+                : "Realtime feed is disabled until backend event streaming is wired."}
+            </p>
           )}
         </div>
       </Card>

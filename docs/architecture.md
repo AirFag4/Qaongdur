@@ -29,8 +29,9 @@ Recommended implementation sequence:
 
 1. Build `services/control-api` and `services/vision` together with the `core` Docker Compose runtime.
 2. Use that core runtime to stabilize auth, API contracts, storage dependencies, and service-to-service networking.
-3. Add `services/agent` after the authenticated API surface and approval hooks are stable.
-4. Add advanced Compose profiles for CPU inference, GPU inference, and local NVR mode after the core path boots cleanly.
+3. Add the investigation, identity-search, map, and ROI milestone from `docs/codex-prompts/06-vision-investigation-identity-search-roi.md`.
+4. Add `services/agent` after the authenticated API surface, approval hooks, investigation UI, and search surfaces are stable.
+5. Add advanced Compose profiles for CPU inference, GPU inference, and local NVR mode after the core path boots cleanly.
 
 This keeps the runtime model realistic early without forcing every inner-loop edit to happen inside a container.
 
@@ -46,9 +47,16 @@ Current implemented slice:
 - `control-api` persists camera definitions, supports reconnect and remove actions, and rehydrates missing MediaMTX paths after a relay restart
 - MediaMTX serves live HLS and playback URLs for recorded spans
 - the web console can add RTSP cameras, view live video, and search playback against this local media path
-- the `mock-streamer` service loops sibling mock videos into MediaMTX as system-managed RTSP cameras
-- the `vision-cpu` profile processes those relay sources, stores first/middle/last track crops, and exposes a crop gallery through `control-api`
+- the `mock-streamer` service loops sibling mock videos into MediaMTX as system-managed RTSP cameras, defaulting to one active source on lower-spec dev machines
+- the `vision-cpu` profile processes those relay sources from finalized recording chunks, prioritizes newer chunks first, stores first/middle/last track crops, and exposes a crop gallery through `control-api`
 - the optional `face-api` sidecar uses the vendored `third_party/InspireFace` submodule and hydrates the `Megatron` pack into its runtime volume for person-track face embeddings
+
+Next planned slice:
+
+- replace the narrow crop-inspection flow with a broader investigation surface
+- persist camera geolocation and add a device map
+- add text search, face-image search, and identity lists over the existing embedding pipeline
+- add ROI editing with CVAT-like polygon behavior before agent-chat work
 
 Current known limitation:
 

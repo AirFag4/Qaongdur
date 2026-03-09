@@ -25,13 +25,55 @@ const formatBytes = (bytes: number) => {
 };
 
 const toInputValue = (date: Date) => date.toISOString().slice(0, 16);
+const createDefaultRange = () => ({
+  fromAt: toInputValue(new Date(Date.now() - 2 * 60 * 60 * 1000)),
+  toAt: toInputValue(new Date()),
+});
+const toIsoOrUndefined = (value: string) => {
+  if (!value) {
+    return undefined;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? undefined : new Date(timestamp).toISOString();
+};
+
+const buildFilter = ({
+  cameraId,
+  label,
+  fromAt,
+  toAt,
+  includeRetired,
+}: {
+  cameraId: string;
+  label: CropTrackFilter["label"];
+  fromAt: string;
+  toAt: string;
+  includeRetired: boolean;
+}): CropTrackFilter => ({
+  cameraId: cameraId || undefined,
+  label,
+  fromAt: toIsoOrUndefined(fromAt),
+  toAt: toIsoOrUndefined(toAt),
+  includeRetired,
+});
 
 export function CropGalleryPage() {
   const queryClient = useQueryClient();
+  const defaultRange = useMemo(() => createDefaultRange(), []);
   const [cameraId, setCameraId] = useState<string>("");
   const [label, setLabel] = useState<CropTrackFilter["label"]>("all");
-  const [fromAt, setFromAt] = useState(() => toInputValue(new Date(Date.now() - 2 * 60 * 60 * 1000)));
-  const [toAt, setToAt] = useState(() => toInputValue(new Date()));
+  const [fromAt, setFromAt] = useState(() => defaultRange.fromAt);
+  const [toAt, setToAt] = useState(() => defaultRange.toAt);
+  const [includeRetired, setIncludeRetired] = useState(false);
+  const [appliedFilter, setAppliedFilter] = useState<CropTrackFilter>(() =>
+    buildFilter({
+      cameraId: "",
+      label: "all",
+      fromAt: defaultRange.fromAt,
+      toAt: defaultRange.toAt,
+      includeRetired: false,
+    }),
+  );
   const [selectedTrackId, setSelectedTrackId] = useState<string>("");
 
   const status = useQuery({
@@ -46,19 +88,11 @@ export function CropGalleryPage() {
     refetchInterval: 10_000,
   });
 
-  const activeFilter = useMemo<CropTrackFilter>(
-    () => ({
-      cameraId: cameraId || undefined,
-      label,
-      fromAt: fromAt ? new Date(fromAt).toISOString() : undefined,
-      toAt: toAt ? new Date(toAt).toISOString() : undefined,
-    }),
-    [cameraId, fromAt, label, toAt],
-  );
+  const appliedFilterKey = JSON.stringify(appliedFilter);
 
   const tracks = useQuery({
-    queryKey: queryKeys.cropTracks(JSON.stringify(activeFilter)),
-    queryFn: () => apiClient.listCropTracks(activeFilter),
+    queryKey: queryKeys.cropTracks(appliedFilterKey),
+    queryFn: () => apiClient.listCropTracks(appliedFilter),
     refetchInterval: 10_000,
   });
 
@@ -73,7 +107,7 @@ export function CropGalleryPage() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.visionStatus }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.cropTracks(JSON.stringify(activeFilter)) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.cropTracks(appliedFilterKey) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.visionSources }),
       ]);
     },
@@ -102,9 +136,39 @@ export function CropGalleryPage() {
     );
   }
 
+  const applyFilters = () => {
+    setAppliedFilter(
+      buildFilter({
+        cameraId,
+        label,
+        fromAt,
+        toAt,
+        includeRetired,
+      }),
+    );
+  };
+
+  const resetFilters = () => {
+    const nextRange = createDefaultRange();
+    setCameraId("");
+    setLabel("all");
+    setFromAt(nextRange.fromAt);
+    setToAt(nextRange.toAt);
+    setIncludeRetired(false);
+    setAppliedFilter(
+      buildFilter({
+        cameraId: "",
+        label: "all",
+        fromAt: nextRange.fromAt,
+        toAt: nextRange.toAt,
+        includeRetired: false,
+      }),
+    );
+  };
+
   return (
     <div className="space-y-3">
-      <FilterBar>
+      <FilterBar onReset={resetFilters}>
         <FilterField label="Camera">
           <select
             className="form-input"
@@ -156,6 +220,18 @@ export function CropGalleryPage() {
             {triggerScan.isPending ? "Scanning..." : "Scan Recordings Now"}
           </Button>
         </RoleGate>
+        <Button size="sm" variant="secondary" onClick={applyFilters}>
+          Search Crops
+        </Button>
+        <label className="flex items-center gap-2 rounded-md border border-stone-700 bg-stone-950/40 px-3 py-2 text-xs text-stone-300">
+          <input
+            type="checkbox"
+            className="accent-cyan-600"
+            checked={includeRetired}
+            onChange={(event) => setIncludeRetired(event.target.checked)}
+          />
+          Include retired history
+        </label>
       </FilterBar>
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -165,11 +241,15 @@ export function CropGalleryPage() {
               <CardTitle>Track Gallery</CardTitle>
               <CardDescription>
                 Representative crops from automatically processed recording chunks, filtered by real capture time.
+                {!appliedFilter.includeRetired
+                  ? " Showing current active sources only."
+                  : " Including retired mock-source history."}
               </CardDescription>
             </div>
             <div className="text-right text-xs text-stone-400">
               <p>{tracks.data?.length ?? 0} tracks</p>
               <p>Queue: {status.data?.queueDepth ?? 0}</p>
+              <p>Workers: {status.data?.segmentWorkerCount ?? 1}</p>
             </div>
           </div>
 

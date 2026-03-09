@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -28,7 +29,8 @@ CREATE TABLE IF NOT EXISTS video_source (
   frame_height INTEGER NOT NULL DEFAULT 0,
   source_fps REAL NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL,
-  last_segment_at TEXT
+  last_segment_at TEXT,
+  retired_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS processing_job (
@@ -155,6 +157,7 @@ class VisionRepository:
         self._ensure_column(connection, "video_source", "source_kind", "TEXT NOT NULL DEFAULT 'rtsp'")
         self._ensure_column(connection, "video_source", "ingest_mode", "TEXT NOT NULL DEFAULT 'pull'")
         self._ensure_column(connection, "video_source", "last_segment_at", "TEXT")
+        self._ensure_column(connection, "video_source", "retired_at", "TEXT")
         self._ensure_column(connection, "track", "segment_path", "TEXT")
         self._ensure_column(connection, "track", "segment_start_at", "TEXT")
         self._ensure_column(connection, "track", "segment_duration_sec", "REAL")
@@ -178,17 +181,23 @@ class VisionRepository:
         connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
     def sync_sources(self, sources: list[dict[str, Any]]) -> None:
+        synced_at = (
+            str(sources[0].get("updated_at"))
+            if sources and sources[0].get("updated_at")
+            else datetime.now(tz=UTC).isoformat()
+        )
+        active_ids = [str(source["id"]) for source in sources]
         with self._lock, self._connect() as connection:
             connection.executemany(
                 """
                 INSERT INTO video_source (
                   id, site_id, camera_id, camera_name, path_name, stream_url, live_stream_url,
                   health, source_kind, ingest_mode, file_path, duration_sec, frame_width,
-                  frame_height, source_fps, updated_at, last_segment_at
+                  frame_height, source_fps, updated_at, last_segment_at, retired_at
                 ) VALUES (
                   :id, :site_id, :camera_id, :camera_name, :path_name, :stream_url, :live_stream_url,
                   :health, :source_kind, :ingest_mode, :file_path, :duration_sec, :frame_width,
-                  :frame_height, :source_fps, :updated_at, :last_segment_at
+                  :frame_height, :source_fps, :updated_at, :last_segment_at, :retired_at
                 )
                 ON CONFLICT(id) DO UPDATE SET
                   site_id=excluded.site_id,
@@ -206,12 +215,32 @@ class VisionRepository:
                   frame_height=excluded.frame_height,
                   source_fps=excluded.source_fps,
                   updated_at=excluded.updated_at,
-                  last_segment_at=COALESCE(video_source.last_segment_at, excluded.last_segment_at)
+                  last_segment_at=COALESCE(video_source.last_segment_at, excluded.last_segment_at),
+                  retired_at=NULL
                 """,
                 sources,
             )
+            if active_ids:
+                placeholders = ", ".join("?" for _ in active_ids)
+                connection.execute(
+                    f"""
+                    UPDATE video_source
+                    SET retired_at = COALESCE(retired_at, ?)
+                    WHERE id NOT IN ({placeholders})
+                    """,
+                    [synced_at, *active_ids],
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE video_source
+                    SET retired_at = COALESCE(retired_at, ?)
+                    """,
+                    (synced_at,),
+                )
 
-    def list_sources(self) -> list[dict[str, Any]]:
+    def list_sources(self, *, include_retired: bool = False) -> list[dict[str, Any]]:
+        where_clause = "" if include_retired else "WHERE source.retired_at IS NULL"
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -224,8 +253,11 @@ class VisionRepository:
                 FROM video_source AS source
                 LEFT JOIN track ON track.source_id = source.id
                 LEFT JOIN recording_segment AS segment ON segment.source_id = source.id
+                """
+                + where_clause
+                + """
                 GROUP BY source.id
-                ORDER BY source.camera_name ASC
+                ORDER BY source.retired_at IS NOT NULL, source.camera_name ASC
                 """
             ).fetchall()
         return [dict(row) for row in rows]
@@ -534,9 +566,12 @@ class VisionRepository:
         label: str | None = None,
         from_at: str | None = None,
         to_at: str | None = None,
+        include_retired: bool = False,
     ) -> list[dict[str, Any]]:
         conditions: list[str] = []
         params: list[Any] = []
+        if not include_retired:
+            conditions.append("source.retired_at IS NULL")
         if source_id:
             conditions.append("track.source_id = ?")
             params.append(source_id)
@@ -558,12 +593,49 @@ class VisionRepository:
                 f"""
                 SELECT track.*
                 FROM track
+                JOIN video_source AS source ON source.id = track.source_id
                 {where_clause}
                 ORDER BY track.last_seen_at DESC
                 """,
                 params,
             ).fetchall()
             return [self._hydrate_track(connection, dict(track_row)) for track_row in track_rows]
+
+    def purge_retired_sources(
+        self,
+        *,
+        source_kind: str | None = None,
+    ) -> list[str]:
+        conditions = ["source.retired_at IS NOT NULL"]
+        params: list[Any] = []
+        if source_kind:
+            conditions.append("source.source_kind = ?")
+            params.append(source_kind)
+        where_clause = " AND ".join(conditions)
+
+        deleted_paths: list[str] = []
+        with self._lock, self._connect() as connection:
+            artifact_rows = connection.execute(
+                f"""
+                SELECT artifact.relative_path
+                FROM storage_artifact AS artifact
+                JOIN track ON track.id = artifact.track_id
+                JOIN video_source AS source ON source.id = track.source_id
+                WHERE {where_clause}
+                """,
+                params,
+            ).fetchall()
+            deleted_paths = [str(row["relative_path"]) for row in artifact_rows]
+            delete_conditions = ["retired_at IS NOT NULL"]
+            delete_params: list[Any] = []
+            if source_kind:
+                delete_conditions.append("source_kind = ?")
+                delete_params.append(source_kind)
+            connection.execute(
+                f"DELETE FROM video_source WHERE {' AND '.join(delete_conditions)}",
+                delete_params,
+            )
+        return deleted_paths
 
     def get_crop_track(self, track_id: str) -> dict[str, Any] | None:
         with self._connect() as connection:

@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     mock_video_path_prefix: str = "mock-video"
     mock_video_zone: str = "Mock Video Lab"
     mock_video_rtsp_base_url: str = "rtsp://mediamtx:8554"
+    mock_video_max_sources: int = 1
     mediamtx_api_url: str = "http://mediamtx:9997"
     mediamtx_api_user: str = "qaongdur-api"
     mediamtx_api_password: str = "qaongdur-api"

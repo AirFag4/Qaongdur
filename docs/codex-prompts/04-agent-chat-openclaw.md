@@ -12,8 +12,11 @@ Run this prompt after:
 
 1. `docs/codex-prompts/03-backend-vms-ai-platform.md`
 2. the `core` runtime slice of `docs/codex-prompts/05-docker-open-source-platform.md`
+3. `docs/codex-prompts/06-vision-investigation-identity-search-roi.md`
 
-Assume that by the time this prompt starts, the shared container network, auth provider, API surface, storage dependencies, and approval hooks already exist.
+Assume that by the time this prompt starts, the shared container network, auth provider, API surface, storage dependencies, approval hooks, investigation UI, vector-search surfaces, and identity workflows already exist.
+
+This prompt is intentionally downstream of the investigation, map, identity, and ROI work so the agent can depend on stable product surfaces instead of placeholder-only tools.
 
 ## Important Product Constraints
 

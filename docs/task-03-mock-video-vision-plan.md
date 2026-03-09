@@ -92,7 +92,7 @@ Initial local tables:
 For this implementation, SQLite is acceptable inside `services/vision` because:
 
 - Task 03 currently has no database schema in place for vision data
-- the current Postgres service does not yet expose `pgvector`
+- relational metadata migration is still unfinished even though vector search now runs through Qdrant
 - the main value of this slice is the pipeline, crop persistence, and frontend contract
 
 The schema will still be designed to migrate into Postgres later.
@@ -212,7 +212,7 @@ Detector-native labels like `car`, `truck`, `bus`, and `motorcycle` are normaliz
 
 - VLM summarization
 - production-grade re-identification search
-- true Postgres plus `pgvector` rollout
+- true Postgres rollout for vision metadata while preserving Qdrant as the vector search backend
 - ROI drawing UI
 - live RTSP vision inference
 - full alert and incident generation from vision outputs
@@ -250,9 +250,8 @@ Current limitations after implementation:
 - the first `vision` startup after an image rebuild is slower than the earlier scaffold because packaged detector, embedder, and tracker dependencies are now installed in the image
 - clones that skipped `--recurse-submodules` must initialize `third_party/InspireFace` before the face image can build
 - each job processes the current point in the looping RTSP source rather than resetting the publisher to the exact first frame
-- the recorded-chunk worker currently runs as a single queue, so higher-resolution mock streams can build backlog before every source gets processed
-- historical mock-track rows remain visible after the active mock source set changes unless explicit cleanup or source-retirement logic is added
-- Qdrant collections are created, but current live point upserts still fail with `400 Bad Request` and need a follow-up fix
+- the default runtime now caps mock publishing to one active source and one worker unless `MOCK_VIDEO_MAX_SOURCES` or `VISION_SEGMENT_WORKER_COUNT` are raised explicitly
+- retired mock-track rows are hidden from the default crop view, but they remain in SQLite until explicit cleanup or `VISION_PURGE_RETIRED_MOCK_HISTORY=true` is enabled
 - the face sidecar can still time out under load even when the service reports healthy
 - `/crops` page with fixed-aspect track cards, representative middle-crop imagery, and runtime status
 - Compose wiring for `vision-cpu` with persistent `vision-data`
@@ -260,7 +259,7 @@ Current limitations after implementation:
 
 Current implementation gaps relative to the long-term design:
 
-- embeddings are stored in SQLite tables, and Qdrant upserts still need stabilization before the vector index can be treated as the primary store
+- embeddings are stored in SQLite tables alongside Qdrant so the vector index is not yet the sole source of truth
 - ROI filtering is still design-only
 - the first `face-api` startup is expensive because it compiles InspireFace from source and may download the `Megatron` pack at runtime instead of consuming a prebuilt packaged runtime
 - the current face path still depends on the `third_party/InspireFace` submodule being initialized before the image can build

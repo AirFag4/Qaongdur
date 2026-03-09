@@ -34,6 +34,7 @@ export function PlaybackSearchPage() {
   });
   const [activeParams, setActiveParams] = useState<PlaybackSearchParams | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string>();
+  const [playbackCameraIds, setPlaybackCameraIds] = useState<string[]>(selectedCameraIds);
 
   const form = useForm<PlaybackForm>({
     resolver: zodResolver(playbackSchema),
@@ -54,6 +55,18 @@ export function PlaybackSearchPage() {
     () => new Map(cameras.map((camera) => [camera.id, camera.name])),
     [cameras],
   );
+
+  useEffect(() => {
+    const validCameraIds = new Set(cameras.map((camera) => camera.id));
+    setPlaybackCameraIds((current) => {
+      const next = current.filter((cameraId) => validCameraIds.has(cameraId));
+      if (next.length) {
+        return next;
+      }
+      return selectedCameraIds.filter((cameraId) => validCameraIds.has(cameraId));
+    });
+  }, [cameras, selectedCameraIds]);
+
   const selectedSegment =
     playback.data?.find((segment) => segment.id === selectedSegmentId) ?? playback.data?.[0];
 
@@ -69,6 +82,14 @@ export function PlaybackSearchPage() {
         : playback.data[0].id,
     );
   }, [playback.data]);
+
+  const togglePlaybackCamera = (cameraId: string) => {
+    setPlaybackCameraIds((current) =>
+      current.includes(cameraId)
+        ? current.filter((selectedId) => selectedId !== cameraId)
+        : [...current, cameraId],
+    );
+  };
 
   return (
     <div className="space-y-3">
@@ -88,7 +109,7 @@ export function PlaybackSearchPage() {
           variant="secondary"
           onClick={form.handleSubmit((values) =>
             setActiveParams({
-              cameraIds: selectedCameraIds,
+              cameraIds: playbackCameraIds,
               from: new Date(values.from).toISOString(),
               to: new Date(values.to).toISOString(),
               includeAlerts: values.includeAlerts,
@@ -98,6 +119,41 @@ export function PlaybackSearchPage() {
           Search Playback
         </Button>
       </FilterBar>
+
+      <Card className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle>Camera Selection</CardTitle>
+            <CardDescription>
+              Limit playback search to specific cameras, or leave all cameras selected.
+            </CardDescription>
+          </div>
+          <Button
+            size="sm"
+            variant={playbackCameraIds.length ? "ghost" : "secondary"}
+            onClick={() => setPlaybackCameraIds([])}
+          >
+            All cameras
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {cameras.map((camera) => {
+            const selected = playbackCameraIds.includes(camera.id);
+            return (
+              <Button
+                key={camera.id}
+                size="sm"
+                variant={selected ? "default" : "ghost"}
+                onClick={() => togglePlaybackCamera(camera.id)}
+                className="max-w-full min-w-0"
+                title={camera.name}
+              >
+                <span className="block max-w-56 truncate">{camera.name}</span>
+              </Button>
+            );
+          })}
+        </div>
+      </Card>
 
       <Card className="space-y-3">
         <div className="flex items-center justify-between">

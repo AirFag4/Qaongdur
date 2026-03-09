@@ -54,9 +54,10 @@ export function SiteCameraSwitcher({
               size="sm"
               variant={selected ? "default" : "ghost"}
               onClick={() => onCameraToggle(camera.id)}
-              className="h-7 px-2 text-[11px]"
+              className="h-7 max-w-full min-w-0 px-2 text-[11px]"
+              title={camera.name}
             >
-              {camera.name}
+              <span className="block max-w-full truncate">{camera.name}</span>
             </Button>
           );
         })}

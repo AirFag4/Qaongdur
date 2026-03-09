@@ -74,6 +74,7 @@ def create_app() -> FastAPI:
         label: str | None = Query(default=None, pattern="^(person|vehicle|all)?$"),
         fromAt: str | None = None,
         toAt: str | None = None,
+        includeRetired: bool = False,
     ) -> dict[str, object]:
         tracks = pipeline.list_crop_tracks(
             source_id=sourceId,
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
             label=label,
             from_at=fromAt,
             to_at=toAt,
+            include_retired=includeRetired,
         )
         return {
             "count": len(tracks),

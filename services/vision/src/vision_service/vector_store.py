@@ -3,11 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 from typing import Any
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import httpx
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _qdrant_point_id(point_id: str | None) -> str:
+    seed = point_id or uuid4().hex
+    return str(uuid5(NAMESPACE_URL, seed))
 
 
 @dataclass(slots=True)
@@ -106,17 +111,28 @@ class QdrantVectorStore:
             with httpx.Client(timeout=self._timeout_seconds) as client:
                 response = client.put(
                     f"{self._base_url}/collections/{collection}/points",
+                    params={"wait": "true"},
                     json={
                         "points": [
                             {
-                                "id": point_id if point_id else uuid4().hex,
-                                "vector": vector,
-                                "payload": payload,
+                                "id": _qdrant_point_id(point_id),
+                                "vector": [float(value) for value in vector],
+                                "payload": {
+                                    key: value
+                                    for key, value in payload.items()
+                                    if value is not None
+                                },
                             }
                         ]
                     },
                 )
-                response.raise_for_status()
+                if not response.is_success:
+                    detail = response.text.strip() or "unknown error"
+                    raise httpx.HTTPStatusError(
+                        f"{response.status_code} {response.reason_phrase}: {detail}",
+                        request=response.request,
+                        response=response,
+                    )
         except httpx.HTTPError as error:
             LOGGER.warning("Qdrant upsert failed: %s", error)
             self._status = VectorStoreStatus(
@@ -147,7 +163,28 @@ class QdrantVectorStore:
                     }
                 },
             )
-            response.raise_for_status()
+            if response.status_code == 409:
+                existing = client.get(f"{self._base_url}/collections/{collection}")
+                existing.raise_for_status()
+                existing_size = (
+                    existing.json()
+                    .get("result", {})
+                    .get("config", {})
+                    .get("params", {})
+                    .get("vectors", {})
+                    .get("size")
+                )
+                if existing_size not in (None, size):
+                    raise httpx.HTTPStatusError(
+                        (
+                            f"409 Conflict: collection {collection} exists with vector size "
+                            f"{existing_size}, expected {size}"
+                        ),
+                        request=response.request,
+                        response=response,
+                    )
+            else:
+                response.raise_for_status()
         self._collection_sizes[collection] = size
         self._status = VectorStoreStatus(
             enabled=self._enabled,

@@ -156,6 +156,7 @@ export class HttpApiClient implements VmsApiClient {
         label: filter?.label && filter.label !== "all" ? filter.label : undefined,
         fromAt: filter?.fromAt,
         toAt: filter?.toAt,
+        includeRetired: filter?.includeRetired ? "true" : undefined,
       }),
     );
     return response.tracks;

@@ -17,7 +17,7 @@ Stage 1: `core` runtime, done together with `docs/codex-prompts/03-backend-vms-a
 - include seed or mock data so the platform is demoable early
 - keep `agent`, `vision-cpu`, `vision-gpu`, and `nvr-local` out of the critical path if they are not ready yet
 
-Stage 2: advanced profiles, done after `docs/codex-prompts/04-agent-chat-openclaw.md` or when backend surfaces are stable
+Stage 2: advanced profiles, done after `docs/codex-prompts/06-vision-investigation-identity-search-roi.md` and `docs/codex-prompts/04-agent-chat-openclaw.md`, or when backend surfaces are stable
 
 - add `vision-cpu`
 - add `vision-gpu`

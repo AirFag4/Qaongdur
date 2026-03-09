@@ -90,11 +90,13 @@ make vision-up
 Current behavior:
 
 - discovers local supported video sources from `../Video`
+- caps mock publication to `MOCK_VIDEO_MAX_SOURCES`, default `1`, so lower-spec machines do not try to relay every large file by default
 - exposes those sources as MediaMTX relay URLs such as `rtsp://mediamtx:8554/mock-video-people-walking`
-- automatically processes finalized recording chunks for any camera path that lands under `/recordings`
+- automatically processes finalized recording chunks for current active camera paths that land under `/recordings`
 - samples frames at `VISION_SAMPLE_FPS`, constrained to `1-3 fps`
 - detects only `person` and `vehicle`
 - normalizes looped publishers to the configured `MOCK_STREAM_WIDTH`, `MOCK_STREAM_HEIGHT`, and `MOCK_STREAM_FPS` so larger source files such as 4K vehicle clips stay stable
+- queues newer recording chunks ahead of older backlog and exposes `VISION_SEGMENT_WORKER_COUNT` for opt-in parallel workers
 - stores first, middle, and last crop JPEGs for each closed track
 - uses the middle crop as the representative `/crops` card image while preserving first and last timing metadata plus saved movement points
 - enforces a `VISION_STORAGE_LIMIT_BYTES` artifact budget, default `10 GB`
@@ -108,9 +110,8 @@ Current limitation:
 - clones that skipped `--recurse-submodules` must run `git submodule update --init --recursive` before building `vision` or `face-api`
 - the first `vision` startup after a rebuild is slower than the earlier scaffold because the image now includes packaged tracking, detector, and embedder dependencies
 - runtime settings are still env-backed; the Settings page in the web app is a planning surface rather than a live-write control plane today
-- the chunk-processing worker is still single-queue, so high-resolution mock streams can backlog before all sources are processed
-- old mock-track history remains in the SQLite store until it is explicitly filtered or cleaned up
-- Qdrant is wired in, but current live upserts still return `400 Bad Request` and need a follow-up fix before vector storage is healthy
+- retired mock-track history remains in the SQLite store until it is explicitly purged, even though the crop page hides it by default
+- the default runtime is intentionally conservative at one mock source and one worker; raise `MOCK_VIDEO_MAX_SOURCES` or `VISION_SEGMENT_WORKER_COUNT` only if the machine can absorb it
 - face embedding calls can still time out under heavier processing load
 
 ## Mock Streamer
@@ -128,6 +129,7 @@ The mock streamer now prefers real files from `../Video`:
 - supported formats are `.mp4`, `.webm`, `.mkv`, and `.mov`
 - once custom files are present, the legacy seed clips (`people-walking.mp4`, `vehicles.mp4`) are skipped automatically
 - if the same source exists in multiple containers such as both `.mp4` and `.webm`, only the larger variant is published
+- the larger files are preferred first when `MOCK_VIDEO_MAX_SOURCES` limits how many active mock cameras are published
 - the generated RTSP path is based on a normalized slug of the source filename
 
 If no supported video files are present, it falls back to a looping synthetic test pattern.
@@ -139,11 +141,14 @@ Fallback onboarding URL:
 Configurable `.env` keys:
 
 - `MOCK_VIDEO_PATH_PREFIX`
+- `MOCK_VIDEO_MAX_SOURCES`
 - `MOCK_STREAM_PATH`
 - `MOCK_STREAM_WIDTH`
 - `MOCK_STREAM_HEIGHT`
 - `MOCK_STREAM_FPS`
 - `MOCK_STREAM_BITRATE`
+- `VISION_SEGMENT_WORKER_COUNT`
+- `VISION_PURGE_RETIRED_MOCK_HISTORY`
 
 ## RTSP Troubleshooting
 

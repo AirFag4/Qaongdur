@@ -37,13 +37,14 @@ This document covers three layers:
 Current package exports:
 
 - `createApiClient(config?): VmsApiClient`
-- `createRealtimeSocket(): MockRealtimeEventSocket`
+- `createRealtimeSocket(config?): RealtimeEventSocket`
 
 Current behavior:
 
 - `createApiClient()` returns the singleton `mockApiClient` when no backend config is provided.
 - when `baseUrl` and `getAccessToken` are provided, the client uses the real HTTP backend for camera inventory, live tiles, overview, playback search, devices, and camera mutations, and only falls back to mocks on network failure for read-only queries.
-- `createRealtimeSocket()` always returns a `MockRealtimeEventSocket`.
+- `createRealtimeSocket()` returns a `MockRealtimeEventSocket` only when no backend config is provided.
+- when a real backend is configured, `createRealtimeSocket()` currently returns a disabled transport instead of fake events because backend event streaming is not wired yet.
 - when a real backend is configured, `createCamera()`, `reconnectCamera()`, and `deleteCamera()` do not fall back to the mock adapter.
 
 Current run modes:
@@ -74,7 +75,7 @@ The frontend only talks to the data layer through this interface:
 | `listVisionSources()` | none | `Promise<VisionSource[]>` | returns camera-oriented vision sources with MediaMTX relay URLs and processed-segment counts | crop gallery page |
 | `getVisionStatus()` | none | `Promise<VisionPipelineStatus>` | returns detector, embedding, face-sidecar, vector-store, queue, and storage status | crop gallery page |
 | `runVisionMockJob(sourceIds?)` | optional source ids | `Promise<VisionJobStatus>` | requests an immediate recordings scan in backend mode | crop gallery page |
-| `listCropTracks(filter?)` | `CropTrackFilter` | `Promise<CropTrack[]>` | returns stored first, middle, and last crop states per track with time-range filtering | crop gallery page |
+| `listCropTracks(filter?)` | `CropTrackFilter` | `Promise<CropTrack[]>` | returns stored first, middle, and last crop states per track with time-range filtering and optional retired-history inclusion | crop gallery page |
 | `getCropTrack(trackId)` | track id | `Promise<CropTrackDetail \| undefined>` | returns detailed movement, bbox, and timing info for one track | crop gallery page |
 | `getSystemSettings()` | none | `Promise<SystemSettings>` | returns the current auth and env-backed runtime settings surface used by the Settings page | settings page |
 
@@ -94,6 +95,12 @@ Current mock behavior:
 - emits `alert.created` about 65% of the time
 - emits `camera.health_changed` otherwise
 - does not require auth, acknowledgements, or reconnection logic yet
+
+Current backend behavior:
+
+- the UI still renders the realtime rail
+- fake events are disabled when the web app is pointed at the real backend
+- the rail shows that backend realtime streaming is not wired yet instead of mixing fake data into a real session
 
 ## Shared Domain Models
 
@@ -274,22 +281,30 @@ All of the following types live in `packages/types/src/index.ts`.
 - `siteId: string`
 - `cameraId: string`
 - `cameraName: string`
-- `filePath: string`
 - `pathName: string`
-- `streamUrl: string`
-- `captureMode: "file" | "rtsp-relay"`
-- `durationSec: number`
-- `frameWidth: number`
-- `frameHeight: number`
-- `sourceFps: number`
+- `relayRtspUrl: string`
+- `liveStreamUrl?: string | null`
+- `sourceKind: string`
+- `ingestMode: string`
+- `health: HealthStatus`
 - `trackCount: number`
+- `processedSegmentCount: number`
+- `latestProcessedAt?: string | null`
+- `lastSegmentAt?: string | null`
+- `retiredAt?: string | null`
 
 ### `VisionPipelineStatus`
 
 - `sampleMode: boolean`
+- `autoIngest?: boolean`
 - `detector: { available: boolean; modelName: string; detail: string }`
 - `embedding: { modelName: string }`
 - `face: { available: boolean; enabled: boolean; mode: string; modelName: string; detail: string }`
+- `vectorStore?: { enabled: boolean; available: boolean; provider: string; detail: string }`
+- `sourceSync?: { lastSyncedAt?: string | null; error?: string | null }`
+- `queueDepth?: number`
+- `segmentWorkerCount?: number`
+- `sampleFps?: number`
 - `latestJob?: VisionJobStatus | null`
 - `storage: VisionStorageStatus`
 
@@ -307,7 +322,11 @@ All of the following types live in `packages/types/src/index.ts`.
 ### `CropTrackFilter`
 
 - `sourceId?: string`
+- `cameraId?: string`
 - `label?: "person" | "vehicle" | "all"`
+- `fromAt?: string`
+- `toAt?: string`
+- `includeRetired?: boolean`
 
 ### `CropTrack`
 

@@ -2,14 +2,17 @@ import type { RealtimeEvent } from "@qaongdur/types";
 import { mockData } from "./mock-data";
 
 export type RealtimeEventHandler = (event: RealtimeEvent) => void;
+export type RealtimeEventMode = "mock" | "disabled";
 
 export interface RealtimeEventSocket {
+  readonly mode: RealtimeEventMode;
   connect(): void;
   disconnect(): void;
   subscribe(handler: RealtimeEventHandler): () => void;
 }
 
 export class MockRealtimeEventSocket implements RealtimeEventSocket {
+  readonly mode = "mock" as const;
   private handlers = new Set<RealtimeEventHandler>();
   private timerId: ReturnType<typeof setInterval> | undefined;
 
@@ -57,5 +60,17 @@ export class MockRealtimeEventSocket implements RealtimeEventSocket {
 
   private emit(event: RealtimeEvent) {
     this.handlers.forEach((handler) => handler(event));
+  }
+}
+
+export class DisabledRealtimeEventSocket implements RealtimeEventSocket {
+  readonly mode = "disabled" as const;
+
+  connect() {}
+
+  disconnect() {}
+
+  subscribe(_: RealtimeEventHandler) {
+    return () => {};
   }
 }

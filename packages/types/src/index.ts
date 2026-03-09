@@ -229,6 +229,7 @@ export interface VisionSource {
   processedSegmentCount: number;
   latestProcessedAt?: string | null;
   lastSegmentAt?: string | null;
+  retiredAt?: string | null;
 }
 
 export interface VisionStorageStatus {
@@ -278,6 +279,7 @@ export interface VisionPipelineStatus {
     error?: string | null;
   };
   queueDepth?: number;
+  segmentWorkerCount?: number;
   sampleFps?: number;
   latestJob?: VisionJobStatus | null;
   storage: VisionStorageStatus;
@@ -289,6 +291,7 @@ export interface CropTrackFilter {
   label?: VisionTrackLabel | "all";
   fromAt?: string;
   toAt?: string;
+  includeRetired?: boolean;
 }
 
 export interface CropTrack {

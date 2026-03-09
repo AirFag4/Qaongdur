@@ -13,7 +13,10 @@ export const apiClient = createApiClient({
   baseUrl: getControlApiBaseUrl(),
   getAccessToken,
 });
-export const realtimeSocket = createRealtimeSocket();
+export const realtimeSocket = createRealtimeSocket({
+  baseUrl: getControlApiBaseUrl(),
+  getAccessToken,
+});
 
 export const queryKeys = {
   sites: ["sites"] as const,

@@ -1,7 +1,7 @@
 import type { VmsApiClient } from "@qaongdur/types";
 import { canFallbackToMock, HttpApiClient, type HttpApiClientConfig } from "./http-api-client";
 import { mockApiClient } from "./mock-api-client";
-import { MockRealtimeEventSocket } from "./mock-event-socket";
+import { DisabledRealtimeEventSocket, MockRealtimeEventSocket } from "./mock-event-socket";
 
 export * from "./mock-event-socket";
 export * from "./http-api-client";
@@ -101,4 +101,9 @@ export const createApiClient = (config?: HttpApiClientConfig): VmsApiClient => {
   };
 };
 
-export const createRealtimeSocket = () => new MockRealtimeEventSocket();
+export const createRealtimeSocket = (config?: HttpApiClientConfig) => {
+  if (!config?.baseUrl || !config.getAccessToken) {
+    return new MockRealtimeEventSocket();
+  }
+  return new DisabledRealtimeEventSocket();
+};

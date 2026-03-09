@@ -37,12 +37,15 @@ pnpm --filter @qaongdur/web dev
 - UI-only mode remains fully mock-backed
 - Keycloak browser auth is live
 - control-api auth validation is live
+- the right-rail realtime feed uses mock events only in UI-only mode; when the web app points at the real backend, fake events are disabled until backend event streaming exists
 - with a configured backend, camera inventory, live tiles, overview, playback search, and devices come from `control-api`
 - camera create, reconnect, and remove actions go directly to `control-api`
 - when `make vision-up` is running, the Crop Gallery reads VMS-backed mock-video sources, jobs, and track cards through `control-api`
 - system-managed mock-video cameras from the sibling `../Video` directory appear in the Devices page and cannot be removed from the UI while the mock-video stack is enabled
 - alerts and incidents still return placeholder backend responses while the full detection and incident pipeline is being built
 - the Devices page exposes reconnect and remove actions only for `site-admin` and `platform-admin`
+- the Crop Gallery now keeps draft filters locally and runs the query only when `Search Crops` is pressed
+- the Playback page now has its own camera selection controls instead of relying only on the site sidebar
 
 ## Build And Lint
 
