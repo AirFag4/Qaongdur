@@ -52,7 +52,9 @@ export function OperatorLayout() {
   const [liveGridSize, setLiveGridSize] = useState<CameraGridSize>(4);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [recentEvents, setRecentEvents] = useState<RealtimeEvent[]>([]);
-  const [themeMode, setThemeMode] = useState<"polarized-dark" | "polarized-light">(() =>
+  const [themeMode, setThemeMode] = useState<
+    "polarized-dark" | "polarized-light"
+  >(() =>
     window.localStorage.getItem("qaongdur-theme-mode") === "polarized-light"
       ? "polarized-light"
       : "polarized-dark",
@@ -179,6 +181,7 @@ export function OperatorLayout() {
     selectedCameraIds,
     liveGridSize,
     recentEvents,
+    themeMode,
     setSiteId: (nextSiteId) => {
       setSiteId(nextSiteId);
       setSelectedCameraIds([]);
@@ -209,11 +212,18 @@ export function OperatorLayout() {
             onCameraToggle={toggleCameraSelection}
           />
         }
-        rightRail={<AgentChatRail recentEvents={recentEvents} realtimeMode={realtimeSocket.mode} />}
+        rightRail={
+          <AgentChatRail
+            recentEvents={recentEvents}
+            realtimeMode={realtimeSocket.mode}
+          />
+        }
         themeMode={themeMode}
         onToggleThemeMode={() =>
           setThemeMode((currentMode) =>
-            currentMode === "polarized-dark" ? "polarized-light" : "polarized-dark",
+            currentMode === "polarized-dark"
+              ? "polarized-light"
+              : "polarized-dark",
           )
         }
       >
