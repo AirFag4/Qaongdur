@@ -44,10 +44,16 @@ pnpm --filter @qaongdur/web dev
 - system-managed mock-video cameras from the sibling `../Video` directory appear in the Devices page and cannot be removed from the UI while the mock-video stack is enabled
 - alerts and incidents still return placeholder backend responses while the full detection and incident pipeline is being built
 - the Devices page exposes reconnect and remove actions only for `site-admin` and `platform-admin`
+- the Devices page now supports optional camera geolocation metadata during onboarding and a `Device Map` mode powered by MapLibre with live/playback/crop pivots for mapped cameras
 - the Crop Gallery now keeps draft filters locally and runs the query only when `Search Crops` is pressed
 - the Crop Gallery is paginated at 20 tracks per page and only loads the representative middle crop for the grid view
 - clicking a crop card opens a closable investigation modal that fetches the track detail lazily, including start/middle/end source-frame overlays and direct pivots into live or playback
+- the Crop Gallery now accepts `cameraId`, `from`, `to`, `fromAt`, and `toAt` query-parameter pivots so other pages can land operators in a camera-scoped investigation window
+- the Crop Gallery top filter form now accepts optional text and image queries; image search tries face-first matching, and combined text+image queries are merged into one ranked result list
+- the Settings page now shows the shared local media budget split between playback recordings and crop artifacts, plus the current embedding enabled/disabled state
+- the Settings page now also holds the operator timezone preference used by playback and crop search forms
 - the Playback page now has its own camera selection controls instead of relying only on the site sidebar
+- the app theme toggle label is now explicit as `Theme / Light` or `Theme / Dark`, and the smaller operator panels follow the selected theme instead of staying dark-only
 
 ## Build And Lint
 

@@ -71,13 +71,15 @@ The frontend only talks to the data layer through this interface:
 | `listIncidents()` | none | `Promise<Incident[]>` | returns all incidents | incident page list |
 | `getIncidentById(id)` | incident id | `Promise<Incident \| undefined>` | finds one incident in mock storage | incident detail page |
 | `searchPlayback(params)` | `PlaybackSearchParams` | `Promise<PlaybackSegment[]>` | returns MediaMTX recording spans with browser playback and downloadable MP4 URLs in backend mode and generated 15-minute buckets in mock mode | playback page |
-| `listDevices(siteId?)` | optional `siteId` | `Promise<Device[]>` | returns all devices or a site-scoped subset | devices page |
+| `listDevices(siteId?)` | optional `siteId` | `Promise<Device[]>` | returns all devices or a site-scoped subset, including optional geolocation metadata for mapped cameras | devices page |
+| `listDeviceMapCameras(siteId?)` | optional `siteId` | `Promise<DeviceMapCamera[]>` | returns only geolocated cameras for the device-map surface | devices page |
 | `listVisionSources()` | none | `Promise<VisionSource[]>` | returns camera-oriented vision sources with MediaMTX relay URLs and processed-segment counts | crop gallery page |
 | `getVisionStatus()` | none | `Promise<VisionPipelineStatus>` | returns detector, embedding, face-sidecar, vector-store, queue, and storage status | crop gallery page |
 | `runVisionMockJob(sourceIds?)` | optional source ids | `Promise<VisionJobStatus>` | requests an immediate recordings scan in backend mode | crop gallery page |
 | `listCropTracks(filter?)` | `CropTrackFilter` | `Promise<CropTrackPage>` | returns paginated crop-track cards with time-range filtering, optional retired-history inclusion, and only the representative middle crop for each row | crop gallery page |
+| `searchCropTracks(input)` | `CropTrackSearchInput` | `Promise<CropTrackPage>` | runs crop search with the same camera/time filters plus optional text and image queries; image queries try face-first matching before crop similarity | crop gallery page |
 | `getCropTrack(trackId)` | track id | `Promise<CropTrackDetail \| undefined>` | returns detailed movement, bbox, first/middle/last crop images, and source-frame overlays for one track | crop gallery page |
-| `getSystemSettings()` | none | `Promise<SystemSettings>` | returns the current auth and env-backed runtime settings surface used by the Settings page | settings page |
+| `getSystemSettings()` | none | `Promise<SystemSettings>` | returns the current auth, shared media-budget split, and env-backed runtime settings surface used by the Settings page | settings page |
 
 ### `RealtimeEventSocket`
 
@@ -130,6 +132,10 @@ All of the following types live in `packages/types/src/index.ts`.
 - `siteId: string`
 - `name: string`
 - `zone: string`
+- `latitude?: number | null`
+- `longitude?: number | null`
+- `heading?: number | null`
+- `locationNote?: string | null`
 - `streamUrl: string`
 - `liveStreamUrl?: string | null`
 - `playbackPath?: string | null`
@@ -229,6 +235,10 @@ All of the following types live in `packages/types/src/index.ts`.
 - `siteId: string`
 - `name: string`
 - `type: DeviceType`
+- `latitude?: number | null`
+- `longitude?: number | null`
+- `heading?: number | null`
+- `locationNote?: string | null`
 - `model: string`
 - `ipAddress: string`
 - `firmware: string`
@@ -265,6 +275,10 @@ All of the following types live in `packages/types/src/index.ts`.
 - `name: string`
 - `zone: string`
 - `rtspUrl: string`
+- `latitude?: number`
+- `longitude?: number`
+- `heading?: number`
+- `locationNote?: string`
 - `rtspTransport?: RtspTransport`
 - `rtspAnyPort?: boolean`
 
@@ -328,6 +342,14 @@ All of the following types live in `packages/types/src/index.ts`.
 - `toAt?: string`
 - `includeRetired?: boolean`
 
+### `CropTrackSearchInput`
+
+- all fields from `CropTrackFilter`
+- `page?: number`
+- `pageSize?: number`
+- `textQuery?: string`
+- `imageBase64?: string`
+
 ### `CropTrack`
 
 - `id: string`
@@ -355,6 +377,8 @@ All of the following types live in `packages/types/src/index.ts`.
 - `faceStatus: string`
 - `faceModel?: string | null`
 - `closedReason: string`
+- `searchScore?: number | null`
+- `searchReason?: string | null`
 - `firstCropDataUrl: string`
 - `middleCropDataUrl: string`
 - `lastCropDataUrl: string`
@@ -384,7 +408,7 @@ The frontend route layer is already stable and should be treated as the first co
 | `/incidents` | Incident detail | `listIncidents()` then `getIncidentById(id)` | redirects to first incident if no id is present |
 | `/incidents/:incidentId` | Incident detail | `listIncidents()`, `getIncidentById(id)` | detail page |
 | `/playback` | Playback search | `searchPlayback(params)` | query runs only after form submit |
-| `/devices` | Devices | `listDevices(siteId)`, `createCamera(input)`, `reconnectCamera(cameraId)`, `deleteCamera(cameraId)` | search and type filter are local UI filters; reconnect and remove are admin-only |
+| `/devices` | Devices | `listDevices(siteId)`, `listDeviceMapCameras(siteId)`, `createCamera(input)`, `reconnectCamera(cameraId)`, `deleteCamera(cameraId)` | search and type filter are local UI filters; the page now has inventory and device-map modes; reconnect and remove are admin-only |
 
 ### Layout bootstrapping
 
@@ -416,6 +440,7 @@ Current query key factory in `apps/web/src/lib/api.ts`:
 | `queryKeys.incident(id)` | `["incident", id]` |
 | `queryKeys.playback(hash)` | `["playback", hash]` |
 | `queryKeys.devices(siteId)` | `["devices", siteId ?? "all"]` |
+| `queryKeys.deviceMap(siteId)` | `["device-map", siteId ?? "all"]` |
 
 Recommendation:
 
@@ -524,6 +549,10 @@ Current implemented and recommended next domain endpoints:
 | `GET` | `/api/v1/incidents/:incidentId` | path param | `Incident` | `getIncidentById(id)` |
 | `POST` | `/api/v1/playback/search` | body: `PlaybackSearchParams` | `PlaybackSegment[]` | `searchPlayback(params)` |
 | `GET` | `/api/v1/devices` | query: `siteId?` | `Device[]` | `listDevices(siteId?)` |
+| `GET` | `/api/v1/device-map` | query: `siteId?` | `DeviceMapCamera[]` | `listDeviceMapCameras(siteId?)` |
+| `GET` | `/api/v1/vision/crop-tracks` | query: `CropTrackFilter`, `page?`, `pageSize?` | `CropTrackPage` | `listCropTracks(filter?)` |
+| `POST` | `/api/v1/vision/crop-search` | body: `CropTrackSearchInput` | `CropTrackPage` | `searchCropTracks(input)` |
+| `GET` | `/api/v1/vision/crop-tracks/:trackId` | path param | `CropTrackDetail` | `getCropTrack(trackId)` |
 
 Notes:
 
@@ -743,6 +772,10 @@ export class HttpVmsApiClient implements VmsApiClient {
     return this.get("/api/v1/devices", { siteId });
   }
 
+  async listDeviceMapCameras(siteId?: string) {
+    return this.get("/api/v1/device-map", { siteId });
+  }
+
   private async get(path: string, query?: Record<string, unknown>) {
     void path;
     void query;
@@ -769,3 +802,19 @@ export class HttpVmsApiClient implements VmsApiClient {
 - `apps/web/src/pages/*.tsx`
 - `docs/codex-prompts/03-backend-vms-ai-platform.md`
 - `docs/codex-prompts/04-agent-chat-openclaw.md`
+### `DeviceMapCamera`
+
+- `id: string`
+- `siteId: string`
+- `cameraId: string`
+- `name: string`
+- `zone: string`
+- `latitude: number`
+- `longitude: number`
+- `heading?: number | null`
+- `locationNote?: string | null`
+- `health: HealthStatus`
+- `liveStreamUrl?: string | null`
+- `playbackPath?: string | null`
+- `sourceKind: string`
+- `isSystemManaged: boolean`

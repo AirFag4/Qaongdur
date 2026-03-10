@@ -45,23 +45,28 @@ Plan for two ingest and recording modes from the start:
 Current implemented slice:
 
 - `control-api` persists camera definitions, supports reconnect and remove actions, and rehydrates missing MediaMTX paths after a relay restart
+- camera definitions now carry optional geolocation metadata so mapped cameras can be reviewed spatially before ROI tooling lands
 - MediaMTX serves live HLS and playback URLs for recorded spans
 - the web console can add RTSP cameras, view live video, and search playback against this local media path
+- the Devices page now has an inventory/map split, and the map mode renders geolocated cameras with MapLibre over open raster tiles
 - the `mock-streamer` service loops sibling mock videos into MediaMTX as system-managed RTSP cameras, defaulting to one active source on lower-spec dev machines
 - the `vision-cpu` profile processes those relay sources from finalized recording chunks, prioritizes newer chunks first, stores first/middle/last track crops, and exposes a crop gallery through `control-api`
+- the crop investigation surface already supports paginated track review, start/middle/end source-frame overlays, camera/time pivots, and multimodal crop search with face-first image matching
+- operator-facing playback and crop search windows now use a configurable timezone preference instead of a fixed UTC-style input flow
 - the optional `face-api` sidecar uses the vendored `third_party/InspireFace` submodule and hydrates the `Megatron` pack into its runtime volume for person-track face embeddings
 
 Next planned slice:
 
 - replace the narrow crop-inspection flow with a broader investigation surface
-- persist camera geolocation and add a device map
-- add text search, face-image search, and identity lists over the existing embedding pipeline
+- extend the current crop modal into full investigation workflows, including track-to-subject pivots and richer subject review
+- build identity lists, face review, and text/image search hardening over the existing embedding pipeline
 - add ROI editing with CVAT-like polygon behavior before agent-chat work
 
 Current known limitation:
 
 - the relay path now supports per-camera RTSP transport selection, but some cameras still need a vendor-specific RTSP path or `rtspAnyPort` compatibility mode before they remain stable
 - track metadata stays in the local SQLite store for now, while object and face embeddings are pushed into Qdrant for vector storage
+- on lower-spec local runtime where `VISION_EMBEDDING_ENABLED=false`, crop text search currently falls back to track metadata ranking instead of true MobileCLIP text-to-image similarity
 - the first `face-api` startup compiles InspireFace from source, so face status can remain unavailable for several minutes on a cold boot
 
 ## Task 03 Vision Data Shape

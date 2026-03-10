@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
 from dataclasses import dataclass
@@ -12,6 +14,7 @@ import time
 from uuid import uuid4
 
 import cv2
+import numpy as np
 
 from .artifact_store import ArtifactStore
 from .config import Settings
@@ -204,7 +207,7 @@ class VisionPipelineService:
                 "detail": self._vector_store.status.detail,
             },
             "latestJob": self._repository.latest_job(),
-            "storage": self._repository.storage_status(self._settings.storage_limit_bytes),
+            "storage": self._repository.storage_status(self._settings.effective_storage_limit_bytes),
             "sourceSync": {
                 "lastSyncedAt": self._latest_source_sync_at,
                 "error": self._latest_source_sync_error,
@@ -249,6 +252,139 @@ class VisionPipelineService:
         if track is None:
             return None
         return self._serialize_track(track, include_detail=True)
+
+    def search_crop_tracks(
+        self,
+        *,
+        text_query: str | None = None,
+        image_base64: str | None = None,
+        source_id: str | None = None,
+        camera_id: str | None = None,
+        label: str | None = None,
+        from_at: str | None = None,
+        to_at: str | None = None,
+        include_retired: bool = False,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, object]:
+        normalized_text = (text_query or "").strip()
+        normalized_image = (image_base64 or "").strip()
+        if not normalized_text and not normalized_image:
+            return self.list_crop_tracks(
+                source_id=source_id,
+                camera_id=camera_id,
+                label=label,
+                from_at=from_at,
+                to_at=to_at,
+                include_retired=include_retired,
+                page=page,
+                page_size=page_size,
+            )
+
+        ranked_matches: list[dict[str, object]] = []
+        executed_search_modes: list[str] = []
+        if normalized_image:
+            image_bgr = self._decode_query_image(normalized_image)
+            face_result = self._face_embedder.embed_query_image(image_bgr)
+            if face_result.status == "ready" and face_result.vector:
+                executed_search_modes.append("face-image")
+                ranked_matches.extend(
+                    self._search_tracks_by_vector(
+                        vector=face_result.vector,
+                        model_name=face_result.model_name,
+                        embedding_kind="face",
+                        reason="face-image",
+                        source_id=source_id,
+                        camera_id=camera_id,
+                        label=label,
+                        from_at=from_at,
+                        to_at=to_at,
+                        include_retired=include_retired,
+                    )
+                )
+            else:
+                with self._embedding_lock:
+                    image_embedding = self._embedder.embed(image_bgr)
+                if image_embedding.vector:
+                    executed_search_modes.append("image")
+                    ranked_matches.extend(
+                        self._search_tracks_by_vector(
+                            vector=image_embedding.vector,
+                            model_name=image_embedding.model_name,
+                            embedding_kind="object",
+                            reason="image",
+                            source_id=source_id,
+                            camera_id=camera_id,
+                            label=label,
+                            from_at=from_at,
+                            to_at=to_at,
+                            include_retired=include_retired,
+                        )
+                    )
+
+        if normalized_text:
+            with self._embedding_lock:
+                text_embedding = self._embedder.embed_text(normalized_text)
+            if text_embedding.vector:
+                executed_search_modes.append("text")
+                ranked_matches.extend(
+                    self._search_tracks_by_vector(
+                        vector=text_embedding.vector,
+                        model_name=text_embedding.model_name,
+                        embedding_kind="object",
+                        reason="text",
+                        source_id=source_id,
+                        camera_id=camera_id,
+                        label=label,
+                        from_at=from_at,
+                        to_at=to_at,
+                        include_retired=include_retired,
+                    )
+                )
+            else:
+                executed_search_modes.append("text-fallback")
+                ranked_matches.extend(
+                    self._search_tracks_by_text_fallback(
+                        text_query=normalized_text,
+                        source_id=source_id,
+                        camera_id=camera_id,
+                        label=label,
+                        from_at=from_at,
+                        to_at=to_at,
+                        include_retired=include_retired,
+                    )
+                )
+
+        merged_matches = self._merge_ranked_matches(ranked_matches)
+        page_size = max(page_size, 1)
+        page = max(page, 1)
+        total_count = len(merged_matches)
+        total_pages = max((total_count + page_size - 1) // page_size, 1)
+        safe_page = min(page, total_pages)
+        start_index = (safe_page - 1) * page_size
+        selected_matches = merged_matches[start_index : start_index + page_size]
+        tracks = self._repository.get_crop_tracks_by_ids(
+            [str(match["trackId"]) for match in selected_matches]
+        )
+        match_by_id = {str(match["trackId"]): match for match in selected_matches}
+        serialized = [
+            self._serialize_track(
+                {
+                    **track,
+                    "search_score": match_by_id[str(track["id"])]["score"],
+                    "search_reason": match_by_id[str(track["id"])]["reason"],
+                }
+            )
+            for track in tracks
+        ]
+        return {
+            "tracks": serialized,
+            "totalCount": total_count,
+            "page": safe_page,
+            "pageSize": page_size,
+            "totalPages": total_pages,
+            "searchModes": executed_search_modes,
+        }
 
     def start_job(self, *, source_ids: list[str] | None = None) -> dict[str, object]:
         del source_ids
@@ -312,6 +448,8 @@ class VisionPipelineService:
             "middlePoint": json.loads(track["middle_point_json"]) if track.get("middle_point_json") else None,
             "lastPoint": json.loads(track["last_point_json"]) if track.get("last_point_json") else None,
             "middleCropDataUrl": self._artifact_store.read_as_data_url(assets.get("middle")),
+            "searchScore": track.get("search_score"),
+            "searchReason": track.get("search_reason"),
         }
         if include_detail:
             payload.update(
@@ -342,6 +480,181 @@ class VisionPipelineService:
                 }
             )
         return payload
+
+    def _decode_query_image(self, image_base64: str) -> np.ndarray:
+        encoded = image_base64.strip()
+        if "," in encoded and encoded.lower().startswith("data:"):
+            encoded = encoded.split(",", 1)[1]
+        try:
+            image_bytes = base64.b64decode(encoded)
+        except (ValueError, binascii.Error) as error:
+            raise ValueError(f"Invalid base64 image payload: {error}") from error
+
+        image_array = np.frombuffer(image_bytes, dtype=np.uint8)
+        image_bgr = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+        if image_bgr is None:
+            raise ValueError("Unable to decode the uploaded image.")
+        return image_bgr
+
+    def _search_tracks_by_vector(
+        self,
+        *,
+        vector: list[float],
+        model_name: str,
+        embedding_kind: str,
+        reason: str,
+        source_id: str | None,
+        camera_id: str | None,
+        label: str | None,
+        from_at: str | None,
+        to_at: str | None,
+        include_retired: bool,
+    ) -> list[dict[str, object]]:
+        query = np.asarray(vector, dtype=np.float32)
+        query_norm = float(np.linalg.norm(query))
+        if query_norm <= 0:
+            return []
+        query = query / query_norm
+
+        candidates = self._repository.search_vector_candidates(
+            embedding_kind=embedding_kind,
+            model_name=model_name,
+            source_id=source_id,
+            camera_id=camera_id,
+            label=label,
+            from_at=from_at,
+            to_at=to_at,
+            include_retired=include_retired,
+        )
+        ranked: list[dict[str, object]] = []
+        for candidate in candidates:
+            try:
+                candidate_vector = np.asarray(
+                    json.loads(str(candidate["vector_json"])),
+                    dtype=np.float32,
+                )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if candidate_vector.shape != query.shape:
+                continue
+            candidate_norm = float(np.linalg.norm(candidate_vector))
+            if candidate_norm <= 0:
+                continue
+            similarity = float(np.dot(query, candidate_vector / candidate_norm))
+            if similarity <= 0:
+                continue
+            ranked.append(
+                {
+                    "trackId": str(candidate["id"]),
+                    "score": round(similarity, 6),
+                    "reason": reason,
+                    "lastSeenAt": str(candidate["last_seen_at"]),
+                }
+            )
+        ranked.sort(
+            key=lambda item: (
+                float(item["score"]),
+                str(item["lastSeenAt"]),
+            ),
+            reverse=True,
+        )
+        return ranked
+
+    def _merge_ranked_matches(
+        self,
+        ranked_matches: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        merged: list[dict[str, object]] = []
+        seen: dict[str, int] = {}
+        for match in ranked_matches:
+            track_id = str(match["trackId"])
+            if track_id in seen:
+                existing = merged[seen[track_id]]
+                existing_reasons = set(str(existing["reason"]).split("+"))
+                existing_reasons.add(str(match["reason"]))
+                existing["reason"] = "+".join(sorted(existing_reasons))
+                existing["score"] = max(float(existing["score"]), float(match["score"]))
+                existing["lastSeenAt"] = max(
+                    str(existing["lastSeenAt"]),
+                    str(match["lastSeenAt"]),
+                )
+                continue
+            seen[track_id] = len(merged)
+            merged.append(dict(match))
+
+        merged.sort(
+            key=lambda item: (
+                float(item["score"]),
+                str(item["lastSeenAt"]),
+            ),
+            reverse=True,
+        )
+        return merged
+
+    def _search_tracks_by_text_fallback(
+        self,
+        *,
+        text_query: str,
+        source_id: str | None,
+        camera_id: str | None,
+        label: str | None,
+        from_at: str | None,
+        to_at: str | None,
+        include_retired: bool,
+    ) -> list[dict[str, object]]:
+        tokens = [
+            token
+            for token in "".join(
+                character if character.isalnum() else " "
+                for character in text_query.lower()
+            ).split()
+            if len(token) >= 2
+        ]
+        if not tokens:
+            return []
+
+        candidates = self._repository.search_text_candidates(
+            source_id=source_id,
+            camera_id=camera_id,
+            label=label,
+            from_at=from_at,
+            to_at=to_at,
+            include_retired=include_retired,
+        )
+        ranked: list[dict[str, object]] = []
+        joined_query = " ".join(tokens)
+        for candidate in candidates:
+            haystack = " ".join(
+                [
+                    str(candidate.get("camera_name", "")).lower(),
+                    str(candidate.get("label", "")).lower(),
+                    str(candidate.get("detector_label", "")).lower(),
+                ]
+            )
+            token_hits = sum(1 for token in tokens if token in haystack)
+            if token_hits == 0:
+                continue
+            phrase_bonus = 1 if joined_query and joined_query in haystack else 0
+            score = min(
+                (token_hits + phrase_bonus) / max(len(tokens) + 1, 1),
+                1.0,
+            )
+            ranked.append(
+                {
+                    "trackId": str(candidate["id"]),
+                    "score": round(float(score), 6),
+                    "reason": "text-fallback",
+                    "lastSeenAt": str(candidate["last_seen_at"]),
+                }
+            )
+        ranked.sort(
+            key=lambda item: (
+                float(item["score"]),
+                str(item["lastSeenAt"]),
+            ),
+            reverse=True,
+        )
+        return ranked
 
     def _scanner_loop(self) -> None:
         while True:
@@ -626,7 +939,7 @@ class VisionPipelineService:
             len(payload) for payload in frame_payloads.values()
         )
         deleted_paths = self._repository.prune_oldest_tracks_until_fit(
-            storage_limit_bytes=self._settings.storage_limit_bytes,
+            storage_limit_bytes=self._settings.effective_storage_limit_bytes,
             bytes_needed=required_bytes,
         )
         for relative_path in deleted_paths:

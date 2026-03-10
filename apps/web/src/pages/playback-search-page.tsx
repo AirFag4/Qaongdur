@@ -7,31 +7,65 @@ import { Button, Card, CardDescription, CardTitle, EmptyState, FilterBar, Filter
 import type { PlaybackSearchParams } from "@qaongdur/types";
 import { useSearchParams } from "react-router-dom";
 import { apiClient, queryKeys } from "../lib/api";
+import {
+  createRecentInputRangeInTimeZone,
+  formatDateTimeInTimeZone,
+  formatDateTimeInputForTimeZone,
+  formatTimeInTimeZone,
+  getOperatorTimeZoneLabel,
+  parseDateTimeInputInTimeZone,
+} from "../lib/bkk-time";
 import { useOperatorOutlet } from "../app/use-operator-outlet";
 
-const toInputValue = (date: Date) => date.toISOString().slice(0, 16);
-
-const playbackSchema = z
+const playbackBaseSchema = z
   .object({
     from: z.string().min(1),
     to: z.string().min(1),
     includeAlerts: z.boolean(),
-  })
-  .refine((values) => new Date(values.from).getTime() < new Date(values.to).getTime(), {
-    message: "`from` must be earlier than `to`",
-    path: ["to"],
   });
 
-type PlaybackForm = z.infer<typeof playbackSchema>;
+type PlaybackForm = z.infer<typeof playbackBaseSchema>;
 
 export function PlaybackSearchPage() {
-  const { cameras, selectedCameraIds } = useOperatorOutlet();
+  const { cameras, selectedCameraIds, operatorTimeZone } = useOperatorOutlet();
+  const playbackSchema = useMemo(
+    () =>
+      playbackBaseSchema.superRefine((values, context) => {
+        const from = parseDateTimeInputInTimeZone(values.from, operatorTimeZone);
+        const to = parseDateTimeInputInTimeZone(values.to, operatorTimeZone);
+
+        if (!from) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Enter a valid ${getOperatorTimeZoneLabel(operatorTimeZone)} start time.`,
+            path: ["from"],
+          });
+        }
+
+        if (!to) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Enter a valid ${getOperatorTimeZoneLabel(operatorTimeZone)} end time.`,
+            path: ["to"],
+          });
+        }
+
+        if (from && to && from.getTime() >= to.getTime()) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "`from` must be earlier than `to`",
+            path: ["to"],
+          });
+        }
+      }),
+    [operatorTimeZone],
+  );
   const [searchParams] = useSearchParams();
   const [initialWindow] = useState(() => {
-    const now = Date.now();
+    const range = createRecentInputRangeInTimeZone(operatorTimeZone);
     return {
-      from: toInputValue(new Date(now - 2 * 60 * 60 * 1000)),
-      to: toInputValue(new Date(now)),
+      from: range.fromInput,
+      to: range.toInput,
     };
   });
   const [activeParams, setActiveParams] = useState<PlaybackSearchParams | null>(null);
@@ -46,6 +80,7 @@ export function PlaybackSearchPage() {
       includeAlerts: true,
     },
   });
+  const timeZoneLabel = getOperatorTimeZoneLabel(operatorTimeZone);
 
   const playback = useQuery({
     queryKey: queryKeys.playback(JSON.stringify(activeParams ?? {})),
@@ -101,12 +136,12 @@ export function PlaybackSearchPage() {
     }
     setPlaybackCameraIds(playbackPreset.cameraIds);
     form.reset({
-      from: toInputValue(new Date(playbackPreset.from)),
-      to: toInputValue(new Date(playbackPreset.to)),
+      from: formatDateTimeInputForTimeZone(playbackPreset.from, operatorTimeZone),
+      to: formatDateTimeInputForTimeZone(playbackPreset.to, operatorTimeZone),
       includeAlerts: playbackPreset.includeAlerts,
     });
     setActiveParams(playbackPreset);
-  }, [form, playbackPreset]);
+  }, [form, operatorTimeZone, playbackPreset]);
 
   const selectedSegment =
     playback.data?.find((segment) => segment.id === selectedSegmentId) ?? playback.data?.[0];
@@ -145,17 +180,25 @@ export function PlaybackSearchPage() {
           <input type="checkbox" {...form.register("includeAlerts")} />
           Include alert-heavy segments
         </label>
+        <p className="mt-4 text-xs text-[var(--qa-panel-text-subtle)]">
+          {timeZoneLabel} with a 10 minute default window.
+        </p>
         <Button
           size="sm"
           variant="secondary"
-          onClick={form.handleSubmit((values) =>
+          onClick={form.handleSubmit((values) => {
+            const from = parseDateTimeInputInTimeZone(values.from, operatorTimeZone);
+            const to = parseDateTimeInputInTimeZone(values.to, operatorTimeZone);
+            if (!from || !to) {
+              return;
+            }
             setActiveParams({
               cameraIds: playbackCameraIds,
-              from: new Date(values.from).toISOString(),
-              to: new Date(values.to).toISOString(),
+              from: from.toISOString(),
+              to: to.toISOString(),
               includeAlerts: values.includeAlerts,
-            }),
-          )}
+            });
+          })}
         >
           Search Playback
         </Button>
@@ -232,8 +275,8 @@ export function PlaybackSearchPage() {
                       {cameraNameById.get(segment.cameraId) ?? segment.cameraId}
                     </p>
                     <p className="font-mono text-[11px] text-stone-500">
-                      {new Date(segment.startAt).toLocaleTimeString()} -{" "}
-                      {new Date(segment.endAt).toLocaleTimeString()}
+                      {formatTimeInTimeZone(segment.startAt, operatorTimeZone)} -{" "}
+                      {formatTimeInTimeZone(segment.endAt, operatorTimeZone)}
                     </p>
                   </div>
                   <div className="mt-2 h-2 w-full rounded bg-stone-800">
@@ -250,11 +293,11 @@ export function PlaybackSearchPage() {
             </div>
 
             <Card className="space-y-3">
-              <div>
-                <CardTitle>Playback Viewer</CardTitle>
+                <div>
+                  <CardTitle>Playback Viewer</CardTitle>
                 <CardDescription>
                   {selectedSegment
-                    ? `${cameraNameById.get(selectedSegment.cameraId) ?? selectedSegment.cameraId} • ${new Date(selectedSegment.startAt).toLocaleString()}`
+                    ? `${cameraNameById.get(selectedSegment.cameraId) ?? selectedSegment.cameraId} • ${formatDateTimeInTimeZone(selectedSegment.startAt, operatorTimeZone)}`
                     : "Select a recorded span to start playback."}
                 </CardDescription>
               </div>

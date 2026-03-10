@@ -28,6 +28,10 @@ Run this prompt before:
 
 Treat this prompt as the next major feature wave. It can be extended later, but do not skip ahead to agent chat until the data model, search surfaces, and investigation UI here are stable.
 
+Before expanding farther into identity, map, and ROI work, run the runtime-hardening slice in:
+
+1. `docs/codex-prompts/06b-storage-budget-runtime-hardening.md`
+
 ## Current Starting Point
 
 Workstream A has already started in the current repo state:
@@ -39,6 +43,24 @@ Workstream A has already started in the current repo state:
 - the detail view can already jump into source live and playback routes using query-parameter pivots
 
 Continue from that foundation instead of rebuilding the crop page from scratch.
+
+Workstream B is now partially started too:
+
+- camera onboarding already accepts optional `latitude`, `longitude`, `heading`, and location notes
+- `control-api` already exposes a typed `/api/v1/device-map` surface for geolocated cameras
+- the Devices page already has an inventory/map split with a MapLibre-backed device map and direct live/playback/crop pivots
+
+Continue from that baseline instead of treating geolocation as untouched greenfield work.
+
+Workstream D has also started in the current repo state:
+
+- the `/crops` filter bar already accepts optional text and image queries alongside camera, label, and time filters
+- image search already tries face detection first and falls back to crop-image similarity when no searchable face is found
+- when both text and image are present, the backend already merges both ranked result sets into one gallery response
+- crop results can already carry `searchReason` and `searchScore` metadata for operator review
+- when local runtime keeps `VISION_EMBEDDING_ENABLED=false`, text search currently degrades to metadata ranking instead of true MobileCLIP text-to-image similarity
+
+Continue from that baseline instead of planning multimodal search as greenfield work.
 
 ## Product Direction
 

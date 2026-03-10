@@ -60,6 +60,43 @@ class VisionServiceClient:
     async def get_crop_track(self, track_id: str) -> dict[str, object]:
         return await self._get_json(f"/api/v1/vision/crop-tracks/{track_id}")
 
+    async def search_crop_tracks(
+        self,
+        *,
+        source_id: str | None = None,
+        camera_id: str | None = None,
+        label: str | None = None,
+        from_at: str | None = None,
+        to_at: str | None = None,
+        include_retired: bool = False,
+        page: int | None = None,
+        page_size: int | None = None,
+        text_query: str | None = None,
+        image_base64: str | None = None,
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {}
+        if source_id:
+            payload["sourceId"] = source_id
+        if camera_id:
+            payload["cameraId"] = camera_id
+        if label:
+            payload["label"] = label
+        if from_at:
+            payload["fromAt"] = from_at
+        if to_at:
+            payload["toAt"] = to_at
+        if include_retired:
+            payload["includeRetired"] = True
+        if page:
+            payload["page"] = page
+        if page_size:
+            payload["pageSize"] = page_size
+        if text_query:
+            payload["textQuery"] = text_query
+        if image_base64:
+            payload["imageBase64"] = image_base64
+        return await self._post_json("/api/v1/vision/crop-search", payload)
+
     async def _get_json(
         self,
         path: str,

@@ -55,6 +55,7 @@ Current behavior in this mode:
 - the Settings page centralizes auth/session actions and exposes the current runtime defaults for recording and vision
 - site-admin and platform-admin users can reconnect or remove cameras from the Devices page
 - RTSP onboarding supports MediaMTX source transport selection (`automatic`, `udp`, `tcp`, `multicast`) plus optional `rtspAnyPort` compatibility mode
+- camera onboarding now accepts optional latitude, longitude, heading, and location notes, and the Devices page exposes a MapLibre-backed `Device Map` mode for mapped cameras
 - MediaMTX records rolling segments, defaults to `60s` chunks in `.env.example`, and serves browser playback plus downloadable MP4 URLs for finalized recordings
 - the local recording volume is pruned oldest-first to stay within the configured `RECORDING_STORAGE_LIMIT_BYTES` budget, default `10 GB`
 - alerts and incidents are still placeholder backend responses rather than a full detection-to-incident pipeline
@@ -79,15 +80,21 @@ Current behavior in this mode:
 - tracks are sampled at `1-3 fps` per source, default `2 fps`
 - recorded chunks are queued newest-first, and worker count is configurable through `VISION_SEGMENT_WORKER_COUNT`
 - the `/crops` page now supports time-range search, 20-track pagination, and a closable investigation modal for first, middle, and last saved observations
+- the crop filter bar now accepts optional text and image queries in the same top form as camera and time filtering
+- image queries try face detection first and fall back to crop-image similarity when no searchable face is found
+- when both text and image are provided, the crop page merges both result sets into one ranked gallery
 - the crop list only loads the representative middle crop for each card; opening a track fetches the heavier first/middle/last crop set plus source-frame overlays on demand
 - the investigation modal can pivot directly into the source live view or a playback query scoped to that track window
+- the crop page now accepts camera/time query-parameter pivots so Devices and future map/identity flows can land operators directly in a camera-scoped review window
 - the `/crops` page hides retired mock-source history by default and exposes an `Include retired history` toggle when you want older rows back
 - embeddings are computed from object crops only
+- the default local media budget is now shared: `10 GB` total, split `80%` for recordings/playback and `20%` for crop artifacts
 - the face stage only attempts one embedding per person track after the minimum dwell window
 - object and face embeddings are written into Qdrant collections for vector storage
 - face embeddings are delegated to a separate `face-api` sidecar that bootstraps InspireFace from the vendored `third_party/InspireFace` submodule and hydrates the `Megatron` resource pack into the persistent runtime volume
 - the first `face-api` startup compiles the vendored InspireFace runtime and downloads the `Megatron` pack inside the container, so it can take several minutes
 - the first `vision` startup after a clean rebuild can take longer than the earlier scaffold because detector and embedder runtimes are installed in the image
+- local low-spec mode can keep `VISION_EMBEDDING_ENABLED=false`; in that mode text search still works through track-metadata fallback, while image search still uses face-first matching plus crop-vector fallback
 - VLM is skipped in this slice
 
 Targeted mock-video publisher restart only:
@@ -241,6 +248,7 @@ Current limitations of this slice:
 - retired mock-source history remains in SQLite until it is explicitly purged, even though the crop page now hides it by default
 - default dev settings favor stability over scale: one mock source and one worker unless you raise `MOCK_VIDEO_MAX_SOURCES` or `VISION_SEGMENT_WORKER_COUNT`
 - the face sidecar can still time out under load even when it reports healthy at startup
+- on lower-spec machines, set `VISION_EMBEDDING_ENABLED=false` in local `.env` to keep the vision API responsive until startup-safe MobileCLIP initialization lands
 
 ## For Developers
 

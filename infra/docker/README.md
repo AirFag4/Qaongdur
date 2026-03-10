@@ -67,7 +67,13 @@ The `core` stack now supports a real RTSP media path:
 - stored cameras are rehydrated into MediaMTX after a media-relay restart
 
 MediaMTX records rolling `60s` segments by default in local development, and the value is now exposed from `.env.example` via `MEDIAMTX_RECORD_SEGMENT_DURATION`.
-The `recording-pruner` sidecar keeps the `mediamtx-recordings` volume within `RECORDING_STORAGE_LIMIT_BYTES`, default `10 GB`, by deleting the oldest segments first.
+The local stack now uses a shared media budget:
+
+- `MEDIA_STORAGE_TOTAL_LIMIT_BYTES`, default `10 GB`
+- `MEDIA_STORAGE_RECORDING_SHARE_PERCENT`, default `80`
+- crop artifacts automatically receive the remaining `20%`
+
+The `recording-pruner` sidecar applies the recording slice of that shared budget by deleting the oldest MediaMTX segments first.
 
 ## Mock Video Vision
 
@@ -99,7 +105,7 @@ Current behavior:
 - queues newer recording chunks ahead of older backlog and exposes `VISION_SEGMENT_WORKER_COUNT` for opt-in parallel workers
 - stores first, middle, and last crop JPEGs for each closed track
 - uses the middle crop as the representative `/crops` card image while preserving first and last timing metadata plus saved movement points
-- enforces a `VISION_STORAGE_LIMIT_BYTES` artifact budget, default `10 GB`
+- enforces the artifact slice of the shared media budget, default `2 GB` when the total budget is `10 GB`
 - reports detailed face-sidecar state through `VisionPipelineStatus.face`
 - skips VLM
 - exposes status, source, crop-track, track-detail, and settings endpoints through `control-api`
@@ -108,6 +114,7 @@ Current limitation:
 
 - the first `face-api` startup compiles InspireFace from source and may download the `Megatron` model pack, so it can take several minutes before face status becomes available
 - clones that skipped `--recurse-submodules` must run `git submodule update --init --recursive` before building `vision` or `face-api`
+- if the vision API fails to bind during startup on a lower-spec machine, set `VISION_EMBEDDING_ENABLED=false` in local `.env` and restart `vision`
 - the first `vision` startup after a rebuild is slower than the earlier scaffold because the image now includes packaged tracking, detector, and embedder dependencies
 - runtime settings are still env-backed; the Settings page in the web app is a planning surface rather than a live-write control plane today
 - retired mock-track history remains in the SQLite store until it is explicitly purged, even though the crop page hides it by default

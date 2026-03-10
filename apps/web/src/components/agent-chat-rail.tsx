@@ -37,12 +37,12 @@ export function AgentChatRail({
         <CardDescription>
           This panel stays focused on agent and realtime tools. Auth controls were moved to Settings.
         </CardDescription>
-        <div className="space-y-2 rounded-md border border-stone-700 bg-stone-950/60 p-2 text-xs text-stone-400">
+        <div className="theme-panel-muted space-y-2 p-2 text-xs">
           <p>Suggested prompts:</p>
-          <p className="rounded border border-stone-700 bg-stone-900 px-2 py-1">
+          <p className="theme-panel-subtle px-2 py-1">
             "Summarize critical alerts from the last 2 hours"
           </p>
-          <p className="rounded border border-stone-700 bg-stone-900 px-2 py-1">
+          <p className="theme-panel-subtle px-2 py-1">
             "Generate incident handover report for shift B"
           </p>
         </div>
@@ -52,7 +52,7 @@ export function AgentChatRail({
         <RoleGate
           anyOf={["operator", "reviewer", "site-admin", "platform-admin"]}
           fallback={
-            <p className="rounded border border-stone-800 bg-stone-950/60 p-2 text-xs text-stone-500">
+            <p className="theme-panel-muted theme-panel-caption p-2 text-xs">
               Operator, reviewer, or admin roles are required to approve evidence exports.
             </p>
           }
@@ -82,7 +82,7 @@ export function AgentChatRail({
         <RoleGate
           anyOf={["platform-admin"]}
           fallback={
-            <p className="rounded border border-stone-800 bg-stone-950/60 p-2 text-xs text-stone-500">
+            <p className="theme-panel-muted theme-panel-caption p-2 text-xs">
               Destructive actions are platform-admin only and require step-up authentication.
             </p>
           }
@@ -121,9 +121,9 @@ export function AgentChatRail({
         <div className="max-h-[48vh] space-y-2 overflow-auto pr-1">
           {recentEvents.length ? (
             recentEvents.map((event, index) => (
-              <div key={`${event.type}-${index}`} className="rounded border border-stone-700 bg-stone-950/70 p-2">
-                <p className="text-[11px] uppercase tracking-wide text-stone-500">{event.type}</p>
-                <p className="mt-1 text-xs text-stone-300">
+              <div key={`${event.type}-${index}`} className="theme-panel-muted p-2">
+                <p className="theme-panel-caption text-[11px] uppercase tracking-wide">{event.type}</p>
+                <p className="mt-1 text-xs text-[var(--qa-panel-text)]">
                   {event.type === "alert.created"
                     ? `${event.payload.title} (${event.payload.severity})`
                     : `${event.payload.cameraId} -> ${event.payload.health}`}
@@ -131,7 +131,7 @@ export function AgentChatRail({
               </div>
             ))
           ) : (
-            <p className="text-xs text-stone-500">
+            <p className="theme-panel-caption text-xs">
               {realtimeMode === "mock"
                 ? "Waiting for events..."
                 : "Realtime feed is disabled until backend event streaming is wired."}

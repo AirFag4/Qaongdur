@@ -14,6 +14,72 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+.theme-polarized-dark {
+  --qa-card-border: rgba(68, 64, 60, 0.8);
+  --qa-card-bg: rgba(28, 25, 23, 0.8);
+  --qa-card-title: rgb(245, 245, 244);
+  --qa-card-description: rgb(168, 162, 158);
+  --qa-panel-border: rgb(68, 64, 60);
+  --qa-panel-bg: rgba(28, 25, 23, 0.7);
+  --qa-panel-muted-bg: rgba(12, 10, 9, 0.6);
+  --qa-panel-subtle-bg: rgba(28, 25, 23, 0.4);
+  --qa-panel-text: rgb(214, 211, 209);
+  --qa-panel-text-muted: rgb(168, 162, 158);
+  --qa-panel-text-subtle: rgb(120, 113, 108);
+  --qa-input-border: rgb(68, 64, 60);
+  --qa-input-bg: rgb(12, 10, 9);
+  --qa-input-text: rgb(245, 245, 244);
+  --qa-input-placeholder: rgb(120, 113, 108);
+  --qa-empty-border: rgb(68, 64, 60);
+  --qa-empty-bg: rgba(28, 25, 23, 0.4);
+  --qa-empty-title: rgb(231, 229, 228);
+  --qa-empty-description: rgb(168, 162, 158);
+  --qa-button-default-bg: rgb(231, 229, 228);
+  --qa-button-default-text: rgb(28, 25, 23);
+  --qa-button-default-hover: rgb(245, 245, 244);
+  --qa-button-secondary-bg: rgb(41, 37, 36);
+  --qa-button-secondary-text: rgb(245, 245, 244);
+  --qa-button-secondary-hover: rgb(68, 64, 60);
+  --qa-button-ghost-text: rgb(231, 229, 228);
+  --qa-button-ghost-hover-bg: rgba(41, 37, 36, 0.7);
+  --qa-badge-stone-border: rgb(87, 83, 78);
+  --qa-badge-stone-bg: rgb(41, 37, 36);
+  --qa-badge-stone-text: rgb(231, 229, 228);
+}
+
+.theme-polarized-light {
+  --qa-card-border: rgb(203, 213, 225);
+  --qa-card-bg: rgba(255, 255, 255, 0.88);
+  --qa-card-title: rgb(15, 23, 42);
+  --qa-card-description: rgb(71, 85, 105);
+  --qa-panel-border: rgb(203, 213, 225);
+  --qa-panel-bg: rgba(255, 255, 255, 0.88);
+  --qa-panel-muted-bg: rgba(241, 245, 249, 0.92);
+  --qa-panel-subtle-bg: rgba(248, 250, 252, 0.95);
+  --qa-panel-text: rgb(30, 41, 59);
+  --qa-panel-text-muted: rgb(71, 85, 105);
+  --qa-panel-text-subtle: rgb(100, 116, 139);
+  --qa-input-border: rgb(203, 213, 225);
+  --qa-input-bg: rgb(255, 255, 255);
+  --qa-input-text: rgb(15, 23, 42);
+  --qa-input-placeholder: rgb(148, 163, 184);
+  --qa-empty-border: rgb(203, 213, 225);
+  --qa-empty-bg: rgba(248, 250, 252, 0.95);
+  --qa-empty-title: rgb(15, 23, 42);
+  --qa-empty-description: rgb(71, 85, 105);
+  --qa-button-default-bg: rgb(15, 23, 42);
+  --qa-button-default-text: rgb(248, 250, 252);
+  --qa-button-default-hover: rgb(30, 41, 59);
+  --qa-button-secondary-bg: rgb(226, 232, 240);
+  --qa-button-secondary-text: rgb(15, 23, 42);
+  --qa-button-secondary-hover: rgb(203, 213, 225);
+  --qa-button-ghost-text: rgb(30, 41, 59);
+  --qa-button-ghost-hover-bg: rgba(226, 232, 240, 0.8);
+  --qa-badge-stone-border: rgb(203, 213, 225);
+  --qa-badge-stone-bg: rgb(241, 245, 249);
+  --qa-badge-stone-text: rgb(30, 41, 59);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -34,10 +100,53 @@ body {
 
 @layer components {
   .form-input {
-    @apply h-9 rounded-md border border-stone-700 bg-stone-950 px-2 text-sm text-stone-100 outline-none transition-colors placeholder:text-stone-500 focus:border-cyan-700;
+    @apply h-9 rounded-md border px-2 text-sm outline-none transition-colors focus:border-cyan-700;
+    border-color: var(--qa-input-border);
+    background-color: var(--qa-input-bg);
+    color: var(--qa-input-text);
+  }
+
+  .form-input::placeholder {
+    color: var(--qa-input-placeholder);
   }
 
   .form-select {
-    @apply h-9 rounded-md border border-stone-700 bg-stone-950 px-2 text-sm text-stone-100 outline-none transition-colors focus:border-cyan-700;
+    @apply h-9 rounded-md border px-2 text-sm outline-none transition-colors focus:border-cyan-700;
+    border-color: var(--qa-input-border);
+    background-color: var(--qa-input-bg);
+    color: var(--qa-input-text);
+  }
+
+  .theme-panel {
+    @apply rounded-md border;
+    border-color: var(--qa-panel-border);
+    background-color: var(--qa-panel-bg);
+    color: var(--qa-panel-text);
+  }
+
+  .theme-panel-muted {
+    @apply rounded-md border;
+    border-color: var(--qa-panel-border);
+    background-color: var(--qa-panel-muted-bg);
+    color: var(--qa-panel-text);
+  }
+
+  .theme-panel-subtle {
+    @apply rounded-md border;
+    border-color: var(--qa-panel-border);
+    background-color: var(--qa-panel-subtle-bg);
+    color: var(--qa-panel-text);
+  }
+
+  .theme-panel-title {
+    color: var(--qa-card-title);
+  }
+
+  .theme-panel-description {
+    color: var(--qa-panel-text-muted);
+  }
+
+  .theme-panel-caption {
+    color: var(--qa-panel-text-subtle);
   }
 }

@@ -20,6 +20,10 @@ class CameraRecord:
     rtsp_url: str
     path_name: str
     created_at: str
+    latitude: float | None = None
+    longitude: float | None = None
+    heading: float | None = None
+    location_note: str | None = None
     ingest_mode: str = "pull"
     system_managed: bool = False
     source_kind: str = "rtsp"
@@ -50,6 +54,10 @@ class CameraStore:
         name: str,
         zone: str,
         rtsp_url: str,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        heading: float | None = None,
+        location_note: str | None = None,
         rtsp_transport: str = "automatic",
         rtsp_any_port: bool = False,
     ) -> CameraRecord:
@@ -59,6 +67,10 @@ class CameraStore:
             site_id=site_id,
             name=name.strip(),
             zone=zone.strip(),
+            latitude=latitude,
+            longitude=longitude,
+            heading=heading,
+            location_note=location_note.strip() if location_note else None,
             rtsp_url=rtsp_url.strip(),
             path_name=camera_id,
             created_at=datetime.now(tz=UTC).isoformat(),
@@ -126,6 +138,26 @@ class CameraStore:
                             site_id=camera.site_id,
                             name=camera.name,
                             zone=camera.zone,
+                            latitude=(
+                                float(existing["latitude"])
+                                if existing and existing.get("latitude") is not None
+                                else camera.latitude
+                            ),
+                            longitude=(
+                                float(existing["longitude"])
+                                if existing and existing.get("longitude") is not None
+                                else camera.longitude
+                            ),
+                            heading=(
+                                float(existing["heading"])
+                                if existing and existing.get("heading") is not None
+                                else camera.heading
+                            ),
+                            location_note=(
+                                str(existing["location_note"])
+                                if existing and existing.get("location_note") is not None
+                                else camera.location_note
+                            ),
                             rtsp_url=camera.rtsp_url,
                             path_name=camera.path_name,
                             created_at=(

@@ -50,17 +50,22 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 - each closed track stores first, middle, and last crop images
 - `GET /api/v1/vision/crop-tracks` is paginated and returns only the representative middle crop for each card so the gallery stays responsive
 - `GET /api/v1/vision/crop-tracks/{track_id}` returns the full first/middle/last crop set plus saved source-frame snapshots and bbox metadata for the investigation modal
+- `POST /api/v1/vision/crop-search` accepts the same camera/time/label filters plus optional `textQuery` and `imageBase64`
+- image queries try face detection first and fall back to object-crop similarity when no searchable face is found
+- combined text and image queries merge both result sets and annotate each returned track with `searchReason` and `searchScore`
 - the `/crops` page uses the middle crop as the representative card image and opens a closable investigation modal for detailed review
 - the `/crops` page hides retired mock-source history by default and exposes an `Include retired history` toggle
 - embeddings are computed from crop images only
 - face extraction is attempted once per qualifying person track through the separate `face-api` sidecar
 - metadata and embeddings are currently persisted in SQLite inside `/data/vision.sqlite3`
-- crop artifacts are stored under `/data/artifacts` and pruned against `VISION_STORAGE_LIMIT_BYTES`, default `10 GB`
+- crop artifacts are stored under `/data/artifacts` and now use the artifact slice of the shared media budget, default `2 GB` when the total local media budget is `10 GB`
 
 ## Current Limitations
 
-- MobileCLIP2 uses a deterministic histogram fallback when the requested runtime weights are unavailable
+- MobileCLIP2 uses a deterministic 512-dimensional histogram fallback when the requested runtime weights are unavailable, so local Qdrant collections stay schema-compatible
+- when local `.env` keeps `VISION_EMBEDDING_ENABLED=false`, text search falls back to track metadata ranking instead of true text-to-image similarity, while image search still remains face-first
 - the first `vision` start after rebuilding the image is slower than the earlier scaffold because the full detector, embedder, and tracking dependencies are installed in-container
+- if startup-time MobileCLIP initialization makes the API miss its health window on a lower-spec machine, set `VISION_EMBEDDING_ENABLED=false` in local `.env` and restart `vision`; the service will fall back to non-vector crop processing while remaining searchable by metadata and time
 - the first `face-api` start compiles InspireFace from the vendored `third_party/InspireFace` submodule and may download the `Megatron` pack into `/runtime`, so the face stage can report `service-unreachable` or `service-not-ready` until that bootstrap completes
 - clones that skipped submodule initialization must run `git submodule update --init --recursive` before rebuilding the `face-api` or `vision` images
 - the job processes the current point in each looping relay, not a hard reset to the exact beginning of the source file

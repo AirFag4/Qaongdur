@@ -65,6 +65,10 @@ export interface Camera {
   siteId: string;
   name: string;
   zone: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  heading?: number | null;
+  locationNote?: string | null;
   streamUrl: string;
   liveStreamUrl?: string | null;
   playbackPath?: string | null;
@@ -164,6 +168,10 @@ export interface Device {
   siteId: string;
   name: string;
   type: DeviceType;
+  latitude?: number | null;
+  longitude?: number | null;
+  heading?: number | null;
+  locationNote?: string | null;
   model: string;
   ipAddress: string;
   firmware: string;
@@ -208,8 +216,29 @@ export interface CreateCameraInput {
   name: string;
   zone: string;
   rtspUrl: string;
+  latitude?: number;
+  longitude?: number;
+  heading?: number;
+  locationNote?: string;
   rtspTransport?: RtspTransport;
   rtspAnyPort?: boolean;
+}
+
+export interface DeviceMapCamera {
+  id: string;
+  siteId: string;
+  cameraId: string;
+  name: string;
+  zone: string;
+  latitude: number;
+  longitude: number;
+  heading?: number | null;
+  locationNote?: string | null;
+  health: HealthStatus;
+  liveStreamUrl?: string | null;
+  playbackPath?: string | null;
+  sourceKind: string;
+  isSystemManaged: boolean;
 }
 
 export type VisionTrackLabel = "person" | "vehicle";
@@ -333,6 +362,8 @@ export interface CropTrack {
   firstCropDataUrl?: string;
   middleCropDataUrl: string;
   lastCropDataUrl?: string;
+  searchScore?: number | null;
+  searchReason?: string | null;
 }
 
 export interface CropTrackPage {
@@ -341,6 +372,7 @@ export interface CropTrackPage {
   page: number;
   pageSize: number;
   totalPages: number;
+  searchModes?: string[];
 }
 
 export interface CropTrackDetail extends CropTrack {
@@ -357,6 +389,11 @@ export interface CropTrackDetail extends CropTrack {
   createdAt?: string;
 }
 
+export interface CropTrackSearchInput extends CropTrackFilter {
+  textQuery?: string;
+  imageBase64?: string;
+}
+
 export interface SystemSettings {
   checkedAt: string;
   auth: {
@@ -364,6 +401,13 @@ export interface SystemSettings {
     audience: string;
     stepUpAcr: string;
     user: AuthenticatedUser;
+  };
+  mediaStorage: {
+    totalLimitBytes: number;
+    recordingLimitBytes: number;
+    recordingSharePercent: number;
+    artifactLimitBytes: number;
+    artifactSharePercent: number;
   };
   recording: {
     segmentDurationSeconds: number;
@@ -373,6 +417,8 @@ export interface SystemSettings {
   vision: {
     serviceUrl: string;
     autoIngest: boolean;
+    embeddingEnabled: boolean;
+    faceEnabled: boolean;
     notes: string[];
   };
 }
@@ -402,10 +448,12 @@ export interface VmsApiClient {
   getIncidentById(id: string): Promise<Incident | undefined>;
   searchPlayback(params: PlaybackSearchParams): Promise<PlaybackSegment[]>;
   listDevices(siteId?: string): Promise<Device[]>;
+  listDeviceMapCameras(siteId?: string): Promise<DeviceMapCamera[]>;
   listVisionSources(): Promise<VisionSource[]>;
   getVisionStatus(): Promise<VisionPipelineStatus>;
   runVisionMockJob(sourceIds?: string[]): Promise<VisionJobStatus>;
   listCropTracks(filter?: CropTrackFilter): Promise<CropTrackPage>;
+  searchCropTracks(input: CropTrackSearchInput): Promise<CropTrackPage>;
   getCropTrack(trackId: string): Promise<CropTrackDetail | undefined>;
   getSystemSettings(): Promise<SystemSettings>;
 }

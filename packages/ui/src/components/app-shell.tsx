@@ -40,6 +40,7 @@ export function AppShell({
     <div
       className={cn(
         "min-h-screen",
+        isDarkTheme ? "theme-polarized-dark" : "theme-polarized-light",
         isDarkTheme
           ? "bg-[radial-gradient(circle_at_12%_5%,rgba(34,211,238,0.12),transparent_30%),radial-gradient(circle_at_90%_92%,rgba(245,158,11,0.08),transparent_26%),linear-gradient(180deg,#11100f_0%,#0b0a09_100%)] text-stone-100"
           : "bg-[radial-gradient(circle_at_12%_5%,rgba(8,145,178,0.16),transparent_30%),radial-gradient(circle_at_88%_88%,rgba(245,158,11,0.14),transparent_28%),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] text-slate-900",
@@ -121,7 +122,7 @@ export function AppShell({
             <div className="flex items-center gap-2">
               {onToggleThemeMode && (
                 <Button size="sm" variant="secondary" onClick={onToggleThemeMode}>
-                  {isDarkTheme ? "Polarized Light" : "Polarized Dark"}
+                  {isDarkTheme ? "Theme / Light" : "Theme / Dark"}
                 </Button>
               )}
               <Button size="sm" variant="ghost" onClick={onOpenCommandPalette}>

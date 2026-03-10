@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,7 +44,9 @@ class Settings(BaseSettings):
     tracker_lost_buffer_frames: int = 6
     tracker_minimum_consecutive_frames: int = 1
     tracker_max_gap_frames: int = 6
-    storage_limit_bytes: int = 10 * 1024 * 1024 * 1024
+    storage_limit_bytes: int | None = None
+    storage_total_limit_bytes: int = 10 * 1024 * 1024 * 1024
+    storage_recording_share_percent: int = 80
     crop_jpeg_quality: int = 85
     crop_max_dimension: int = 320
     frame_max_dimension: int = 960
@@ -60,6 +63,35 @@ class Settings(BaseSettings):
     vector_store_object_collection: str = "qaongdur-object-embeddings"
     vector_store_face_collection: str = "qaongdur-face-embeddings"
     purge_retired_mock_history: bool = False
+
+    @field_validator("storage_recording_share_percent")
+    @classmethod
+    def _validate_storage_recording_share_percent(cls, value: int) -> int:
+        if value <= 0 or value >= 100:
+            raise ValueError("storage_recording_share_percent must be between 1 and 99")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_storage_totals(self) -> "Settings":
+        if self.storage_total_limit_bytes <= 0:
+            raise ValueError("storage_total_limit_bytes must be positive")
+        if self.storage_limit_bytes is not None and self.storage_limit_bytes <= 0:
+            raise ValueError("storage_limit_bytes must be positive when provided")
+        return self
+
+    @property
+    def artifact_storage_share_percent(self) -> int:
+        return 100 - self.storage_recording_share_percent
+
+    @property
+    def effective_storage_limit_bytes(self) -> int:
+        if self.storage_limit_bytes is not None:
+            return self.storage_limit_bytes
+
+        recording_bytes = (
+            self.storage_total_limit_bytes * self.storage_recording_share_percent
+        ) // 100
+        return self.storage_total_limit_bytes - recording_bytes
 
     def ensure_directories(self) -> None:
         Path(self.data_dir).mkdir(parents=True, exist_ok=True)

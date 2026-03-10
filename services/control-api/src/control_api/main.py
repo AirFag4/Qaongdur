@@ -10,7 +10,7 @@ from typing import Annotated, Literal
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .audit import audit_logger
 from .auth import (
@@ -55,6 +55,10 @@ class CameraCreateBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     zone: str = Field(min_length=1, max_length=120)
     rtspUrl: str = Field(min_length=1)
+    latitude: float | None = None
+    longitude: float | None = None
+    heading: float | None = None
+    locationNote: str | None = Field(default=None, max_length=200)
     rtspTransport: Literal["automatic", "udp", "multicast", "tcp"] = "automatic"
     rtspAnyPort: bool = False
 
@@ -65,6 +69,47 @@ class CameraCreateBody(BaseModel):
         if not lowered.startswith(("rtsp://", "rtsps://")):
             raise ValueError("rtspUrl must begin with rtsp:// or rtsps://")
         return value.strip()
+
+    @field_validator("latitude")
+    @classmethod
+    def _validate_latitude(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if value < -90 or value > 90:
+            raise ValueError("latitude must be between -90 and 90")
+        return value
+
+    @field_validator("longitude")
+    @classmethod
+    def _validate_longitude(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if value < -180 or value > 180:
+            raise ValueError("longitude must be between -180 and 180")
+        return value
+
+    @field_validator("heading")
+    @classmethod
+    def _validate_heading(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if value < 0 or value >= 360:
+            raise ValueError("heading must be between 0 and 360")
+        return value
+
+    @field_validator("locationNote")
+    @classmethod
+    def _normalize_location_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_coordinate_pair(self) -> "CameraCreateBody":
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be provided together")
+        return self
 
 
 class PlaybackSearchBody(BaseModel):
@@ -78,6 +123,19 @@ class PlaybackSearchBody(BaseModel):
 
 class VisionMockJobBody(BaseModel):
     sourceIds: list[str] = Field(default_factory=list)
+
+
+class CropSearchBody(BaseModel):
+    sourceId: str | None = None
+    cameraId: str | None = None
+    label: str | None = None
+    fromAt: str | None = None
+    toAt: str | None = None
+    includeRetired: bool = False
+    page: int = 1
+    pageSize: int = 20
+    textQuery: str | None = None
+    imageBase64: str | None = None
 
 
 ALL_PLATFORM_ROLES: tuple[PlatformRole, ...] = (
@@ -133,6 +191,10 @@ def _serialize_camera(
         "siteId": record.site_id,
         "name": record.name,
         "zone": record.zone,
+        "latitude": record.latitude,
+        "longitude": record.longitude,
+        "heading": record.heading,
+        "locationNote": record.location_note,
         "streamUrl": record.rtsp_url,
         "liveStreamUrl": media_client.build_hls_url(record.path_name) if path_state and path_state.ready else None,
         "playbackPath": record.path_name,
@@ -175,6 +237,10 @@ def _serialize_device(camera: dict[str, object]) -> dict[str, object]:
         "siteId": camera["siteId"],
         "name": camera["name"],
         "type": "camera",
+        "latitude": camera.get("latitude"),
+        "longitude": camera.get("longitude"),
+        "heading": camera.get("heading"),
+        "locationNote": camera.get("locationNote"),
         "model": "RTSP Camera",
         "ipAddress": hostname,
         "firmware": "unknown",
@@ -183,6 +249,32 @@ def _serialize_device(camera: dict[str, object]) -> dict[str, object]:
         "uptimePct": camera["uptimePct"],
         "packetLossPct": 0.0 if health == "healthy" else 1.0,
         "tags": list(camera.get("tags", [])),
+    }
+
+
+def _serialize_device_map_camera(
+    record: CameraRecord,
+    path_state: PathState | None,
+    media_client: MediaMtxClient,
+) -> dict[str, object] | None:
+    if record.latitude is None or record.longitude is None:
+        return None
+
+    return {
+        "id": record.id,
+        "siteId": record.site_id,
+        "cameraId": record.id,
+        "name": record.name,
+        "zone": record.zone,
+        "latitude": record.latitude,
+        "longitude": record.longitude,
+        "heading": record.heading,
+        "locationNote": record.location_note,
+        "health": path_state_to_health(path_state),
+        "liveStreamUrl": media_client.build_hls_url(record.path_name) if path_state and path_state.ready else None,
+        "playbackPath": record.path_name,
+        "sourceKind": record.source_kind,
+        "isSystemManaged": record.system_managed,
     }
 
 
@@ -345,11 +437,13 @@ def _discover_mock_video_cameras(settings: Settings) -> list[CameraRecord]:
     if settings.mock_video_max_sources > 0:
         discovered_files = discovered_files[: settings.mock_video_max_sources]
 
-    for file_path in discovered_files:
+    for index, file_path in enumerate(discovered_files):
         stem = _build_mock_video_slug(file_path.stem)
         if not stem:
             continue
         path_name = f"{settings.mock_video_path_prefix}-{stem}"
+        latitude = settings.default_site_latitude + (index * 0.0018)
+        longitude = settings.default_site_longitude + ((index % 2) * 0.0022) - 0.0011
         cameras.append(
             CameraRecord(
                 id=f"cam-{path_name}",
@@ -359,6 +453,10 @@ def _discover_mock_video_cameras(settings: Settings) -> list[CameraRecord]:
                 rtsp_url=f"{settings.mock_video_rtsp_base_url.rstrip('/')}/{path_name}",
                 path_name=path_name,
                 created_at=datetime.now(tz=UTC).isoformat(),
+                latitude=latitude,
+                longitude=longitude,
+                heading=float((index * 45) % 360),
+                location_note=f"Mock ingest source {index + 1}",
                 ingest_mode="publish",
                 system_managed=True,
                 source_kind="mock-video",
@@ -483,6 +581,10 @@ def create_app() -> FastAPI:
             name=body.name,
             zone=body.zone,
             rtsp_url=body.rtspUrl,
+            latitude=body.latitude,
+            longitude=body.longitude,
+            heading=body.heading,
+            location_note=body.locationNote,
             rtsp_transport=body.rtspTransport,
             rtsp_any_port=body.rtspAnyPort,
         )
@@ -806,6 +908,28 @@ def create_app() -> FastAPI:
         except VisionServiceError as error:
             raise raise_vision_bad_gateway(error) from error
 
+    @app.post("/api/v1/vision/crop-search")
+    async def search_vision_crop_tracks(
+        body: CropSearchBody,
+        _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
+        vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
+    ) -> dict[str, object]:
+        try:
+            return await vision_client.search_crop_tracks(
+                source_id=body.sourceId,
+                camera_id=body.cameraId,
+                label=body.label,
+                from_at=body.fromAt,
+                to_at=body.toAt,
+                include_retired=body.includeRetired,
+                page=body.page,
+                page_size=body.pageSize,
+                text_query=body.textQuery,
+                image_base64=body.imageBase64,
+            )
+        except VisionServiceError as error:
+            raise raise_vision_bad_gateway(error) from error
+
     @app.get("/api/v1/devices")
     async def list_devices(
         _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
@@ -824,6 +948,32 @@ def create_app() -> FastAPI:
             for record in records
         ]
         return [_serialize_device(camera) for camera in cameras]
+
+    @app.get("/api/v1/device-map")
+    async def list_device_map_cameras(
+        _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
+        camera_store: Annotated[CameraStore, Depends(get_camera_store)],
+        media_client: Annotated[MediaMtxClient, Depends(get_mediamtx_client)],
+        service_settings: Annotated[Settings, Depends(get_settings)],
+        siteId: str | None = None,
+    ) -> list[dict[str, object]]:
+        records = _list_records(camera_store, service_settings)
+        path_states = await _list_path_states(records, media_client)
+        if siteId:
+            records = [record for record in records if record.site_id == siteId]
+
+        return [
+            marker
+            for marker in (
+                _serialize_device_map_camera(
+                    record,
+                    path_states.get(record.path_name),
+                    media_client,
+                )
+                for record in records
+            )
+            if marker is not None
+        ]
 
     @app.get("/api/v1/auth/me")
     async def get_auth_me(
@@ -851,6 +1001,13 @@ def create_app() -> FastAPI:
                 "stepUpAcr": service_settings.keycloak_step_up_acr,
                 "user": _serialize_principal(principal),
             },
+            "mediaStorage": {
+                "totalLimitBytes": service_settings.media_storage_total_limit_bytes,
+                "recordingLimitBytes": service_settings.recording_storage_limit_bytes,
+                "recordingSharePercent": service_settings.media_storage_recording_share_percent,
+                "artifactLimitBytes": service_settings.artifact_storage_limit_bytes,
+                "artifactSharePercent": service_settings.media_storage_artifact_share_percent,
+            },
             "recording": {
                 "segmentDurationSeconds": service_settings.mediamtx_record_segment_duration_seconds,
                 "playbackPublicUrl": service_settings.mediamtx_playback_public_url,
@@ -859,9 +1016,12 @@ def create_app() -> FastAPI:
             "vision": {
                 "serviceUrl": service_settings.vision_service_url,
                 "autoIngest": True,
+                "embeddingEnabled": service_settings.vision_embedding_enabled,
+                "faceEnabled": True,
                 "notes": [
                     "Recorded chunks are processed automatically after they land in MediaMTX storage.",
                     "Auth controls now live on the Settings page.",
+                    "The default local media budget is shared across recordings and crop artifacts.",
                     "Runtime settings are env-backed right now; this page is the planning surface for future writable config.",
                 ],
             },

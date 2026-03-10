@@ -6,7 +6,9 @@ import type {
   CropTrack,
   CropTrackFilter,
   CropTrackPage,
+  CropTrackSearchInput,
   CreateCameraInput,
+  DeviceMapCamera,
   PlaybackSearchParams,
   PlaybackSegment,
   SystemSettings,
@@ -97,7 +99,7 @@ const mockCropTracks: CropTrack[] = [
     avgConfidence: 0.88,
     embeddingStatus: "fallback",
     embeddingModel: "histogram-fallback",
-    embeddingDim: 64,
+    embeddingDim: 512,
     faceStatus: "ready",
     faceModel: "InspireFace-small",
     faceDim: 512,
@@ -135,7 +137,7 @@ const mockCropTracks: CropTrack[] = [
     avgConfidence: 0.91,
     embeddingStatus: "fallback",
     embeddingModel: "histogram-fallback",
-    embeddingDim: 64,
+    embeddingDim: 512,
     faceStatus: "skipped-label",
     faceModel: "InspireFace-small",
     faceDim: null,
@@ -164,6 +166,13 @@ const mockSystemSettings: SystemSettings = {
       acr: "urn:qaongdur:loa:1",
     },
   },
+  mediaStorage: {
+    totalLimitBytes: 10 * 1024 * 1024 * 1024,
+    recordingLimitBytes: 8 * 1024 * 1024 * 1024,
+    recordingSharePercent: 80,
+    artifactLimitBytes: 2 * 1024 * 1024 * 1024,
+    artifactSharePercent: 20,
+  },
   recording: {
     segmentDurationSeconds: 60,
     playbackPublicUrl: "http://localhost:9996",
@@ -172,6 +181,8 @@ const mockSystemSettings: SystemSettings = {
   vision: {
     serviceUrl: "http://localhost:8010",
     autoIngest: true,
+    embeddingEnabled: true,
+    faceEnabled: true,
     notes: [
       "Mock settings payload for offline UI development.",
       "Real runtime settings are env-backed in the backend stack.",
@@ -213,6 +224,10 @@ export class MockVmsApiClient implements VmsApiClient {
       siteId,
       name: input.name,
       zone: input.zone,
+      latitude: input.latitude ?? null,
+      longitude: input.longitude ?? null,
+      heading: input.heading ?? null,
+      locationNote: input.locationNote ?? null,
       streamUrl: input.rtspUrl,
       liveStreamUrl: null,
       playbackPath: null,
@@ -246,6 +261,10 @@ export class MockVmsApiClient implements VmsApiClient {
       siteId,
       name: input.name,
       type: "camera",
+      latitude: camera.latitude,
+      longitude: camera.longitude,
+      heading: camera.heading,
+      locationNote: camera.locationNote,
       model: "RTSP Camera",
       ipAddress: "mock.local",
       firmware: "mock",
@@ -433,6 +452,33 @@ export class MockVmsApiClient implements VmsApiClient {
       : mockData.devices;
   }
 
+  async listDeviceMapCameras(siteId?: string): Promise<DeviceMapCamera[]> {
+    await sleep(networkDelay());
+    return mockData.cameras
+      .filter((camera) => !siteId || camera.siteId === siteId)
+      .filter(
+        (camera): camera is Camera & { latitude: number; longitude: number } =>
+          typeof camera.latitude === "number" &&
+          typeof camera.longitude === "number",
+      )
+      .map((camera) => ({
+        id: camera.id,
+        siteId: camera.siteId,
+        cameraId: camera.id,
+        name: camera.name,
+        zone: camera.zone,
+        latitude: camera.latitude,
+        longitude: camera.longitude,
+        heading: camera.heading ?? null,
+        locationNote: camera.locationNote ?? null,
+        health: camera.health,
+        liveStreamUrl: camera.liveStreamUrl ?? null,
+        playbackPath: camera.playbackPath ?? null,
+        sourceKind: camera.tags.includes("mock") ? "mock-video" : "rtsp",
+        isSystemManaged: camera.tags.includes("mock"),
+      }));
+  }
+
   async listVisionSources(): Promise<VisionSource[]> {
     await sleep(networkDelay());
     return mockVisionSources;
@@ -536,6 +582,61 @@ export class MockVmsApiClient implements VmsApiClient {
       page: safePage,
       pageSize,
       totalPages,
+    };
+  }
+
+  async searchCropTracks(input: CropTrackSearchInput): Promise<CropTrackPage> {
+    await sleep(networkDelay());
+    const text = input.textQuery?.trim().toLowerCase();
+    const hasImage = Boolean(input.imageBase64?.trim());
+    const filtered = mockCropTracks.filter((track) => {
+      if (input?.sourceId && track.sourceId !== input.sourceId) {
+        return false;
+      }
+      if (input?.cameraId && track.cameraId !== input.cameraId) {
+        return false;
+      }
+      if (input?.label && input.label !== "all" && track.label !== input.label) {
+        return false;
+      }
+      if (input?.fromAt && new Date(track.lastSeenAt).getTime() < new Date(input.fromAt).getTime()) {
+        return false;
+      }
+      if (input?.toAt && new Date(track.firstSeenAt).getTime() > new Date(input.toAt).getTime()) {
+        return false;
+      }
+      if (!text && !hasImage) {
+        return true;
+      }
+      const textMatch = text
+        ? `${track.cameraName} ${track.label} ${track.detectorLabel}`
+            .toLowerCase()
+            .includes(text)
+        : false;
+      const imageMatch = hasImage ? ["person", "vehicle"].includes(track.label) : false;
+      return textMatch || imageMatch;
+    });
+    const rankedTracks = filtered.map((track, index) => ({
+      ...toCropTrackSummary(track),
+      searchScore: Number((1 - index * 0.05).toFixed(3)),
+      searchReason: hasImage && text ? "image+text" : hasImage ? "image" : "text",
+    }));
+    const pageSize = Math.max(input.pageSize ?? 20, 1);
+    const page = Math.max(input.page ?? 1, 1);
+    const totalCount = rankedTracks.length;
+    const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
+    const safePage = Math.min(page, totalPages);
+    const startIndex = (safePage - 1) * pageSize;
+    return {
+      tracks: rankedTracks.slice(startIndex, startIndex + pageSize),
+      totalCount,
+      page: safePage,
+      pageSize,
+      totalPages,
+      searchModes: [
+        ...(hasImage ? ["image"] : []),
+        ...(text ? ["text"] : []),
+      ],
     };
   }
 

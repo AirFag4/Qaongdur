@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import {
   keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Button,
   Card,
@@ -16,10 +16,23 @@ import {
   FilterField,
   LoadingState,
 } from "@qaongdur/ui";
-import type { CropTrackDetail, CropTrackFilter } from "@qaongdur/types";
+import type {
+  CropTrackDetail,
+  CropTrackFilter,
+  CropTrackSearchInput,
+} from "@qaongdur/types";
 import { RoleGate } from "../auth/role-gate";
 import { useOperatorOutlet } from "../app/use-operator-outlet";
 import { apiClient, queryKeys } from "../lib/api";
+import {
+  createRecentInputRangeInTimeZone,
+  formatDateTimeInTimeZone,
+  formatDateTimeInputForTimeZone,
+  formatTimeInTimeZone,
+  getOperatorTimeZoneLabel,
+  type OperatorTimeZonePreference,
+  toIsoOrUndefinedInTimeZone,
+} from "../lib/bkk-time";
 
 const formatBytes = (bytes: number) => {
   if (bytes >= 1024 * 1024 * 1024) {
@@ -31,11 +44,15 @@ const formatBytes = (bytes: number) => {
   return `${bytes} B`;
 };
 
-const toInputValue = (date: Date) => date.toISOString().slice(0, 16);
-const createDefaultRange = () => ({
-  fromAt: toInputValue(new Date(Date.now() - 2 * 60 * 60 * 1000)),
-  toAt: toInputValue(new Date()),
-});
+const createDefaultRange = (
+  operatorTimeZone: OperatorTimeZonePreference,
+) => {
+  const range = createRecentInputRangeInTimeZone(operatorTimeZone);
+  return {
+    fromAt: range.fromInput,
+    toAt: range.toInput,
+  };
+};
 const PAGE_SIZE = 20;
 type ObservationKey = "first" | "middle" | "last";
 const OBSERVATION_OPTIONS: Array<{ key: ObservationKey; label: string }> = [
@@ -44,15 +61,27 @@ const OBSERVATION_OPTIONS: Array<{ key: ObservationKey; label: string }> = [
   { key: "last", label: "End" },
 ];
 
-const toIsoOrUndefined = (value: string) => {
-  if (!value) {
-    return undefined;
+const fingerprintString = (value: string) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
   }
-  const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp)
-    ? undefined
-    : new Date(timestamp).toISOString();
+  return hash.toString(16);
 };
+
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Unable to read the selected image."));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to read the selected image."));
+    reader.readAsDataURL(file);
+  });
 
 const buildFilter = ({
   cameraId,
@@ -60,17 +89,19 @@ const buildFilter = ({
   fromAt,
   toAt,
   includeRetired,
+  operatorTimeZone,
 }: {
   cameraId: string;
   label: CropTrackFilter["label"];
   fromAt: string;
   toAt: string;
   includeRetired: boolean;
+  operatorTimeZone: OperatorTimeZonePreference;
 }): CropTrackFilter => ({
   cameraId: cameraId || undefined,
   label,
-  fromAt: toIsoOrUndefined(fromAt),
-  toAt: toIsoOrUndefined(toAt),
+  fromAt: toIsoOrUndefinedInTimeZone(fromAt, operatorTimeZone),
+  toAt: toIsoOrUndefinedInTimeZone(toAt, operatorTimeZone),
   includeRetired,
 });
 
@@ -124,10 +155,12 @@ function TrackObservationViewer({
   track,
   observationKey,
   isDarkTheme,
+  operatorTimeZone,
 }: {
   track: CropTrackDetail;
   observationKey: ObservationKey;
   isDarkTheme: boolean;
+  operatorTimeZone: OperatorTimeZonePreference;
 }) {
   const observation = observationFrameFor(track, observationKey);
   const [loadedFrameSize, setLoadedFrameSize] = useState({
@@ -183,7 +216,9 @@ function TrackObservationViewer({
                   : "text-xs text-slate-500"
               }
             >
-              {new Date(observation.happenedAt).toLocaleString()} •{" "}
+              {formatDateTimeInTimeZone(observation.happenedAt, operatorTimeZone, {
+                includeSeconds: true,
+              })} •{" "}
               {observation.offsetLabel}
             </p>
           </div>
@@ -221,7 +256,9 @@ function TrackObservationViewer({
               style={overlayStyle}
             >
               <span className="absolute left-0 top-0 -translate-y-full rounded bg-cyan-500/90 px-2 py-1 text-[11px] font-medium text-stone-950">
-                {new Date(observation.happenedAt).toLocaleString()}
+                {formatDateTimeInTimeZone(observation.happenedAt, operatorTimeZone, {
+                  includeSeconds: true,
+                })}
               </span>
             </div>
           ) : null}
@@ -266,7 +303,7 @@ function TrackObservationViewer({
         >
           <div className="flex items-center justify-between gap-2">
             <span>Captured</span>
-            <span>{new Date(observation.happenedAt).toLocaleTimeString()}</span>
+            <span>{formatTimeInTimeZone(observation.happenedAt, operatorTimeZone)}</span>
           </div>
           <div className="mt-2 flex items-center justify-between gap-2">
             <span>Offset</span>
@@ -280,25 +317,46 @@ function TrackObservationViewer({
 
 export function CropGalleryPage() {
   const queryClient = useQueryClient();
-  const { themeMode } = useOperatorOutlet();
+  const { themeMode, operatorTimeZone } = useOperatorOutlet();
   const isDarkTheme = themeMode === "polarized-dark";
   const navigate = useNavigate();
-  const defaultRange = useMemo(() => createDefaultRange(), []);
-  const [cameraId, setCameraId] = useState<string>("");
+  const [searchParams] = useSearchParams();
+  const defaultRange = useMemo(
+    () => createDefaultRange(operatorTimeZone),
+    [operatorTimeZone],
+  );
+  const timeZoneLabel = getOperatorTimeZoneLabel(operatorTimeZone);
+  const initialCameraId = searchParams.get("cameraId") ?? "";
+  const initialFrom = searchParams.get("fromAt") ?? searchParams.get("from");
+  const initialTo = searchParams.get("toAt") ?? searchParams.get("to");
+  const initialFromInput =
+    initialFrom && !Number.isNaN(Date.parse(initialFrom))
+      ? formatDateTimeInputForTimeZone(initialFrom, operatorTimeZone)
+      : defaultRange.fromAt;
+  const initialToInput =
+    initialTo && !Number.isNaN(Date.parse(initialTo))
+      ? formatDateTimeInputForTimeZone(initialTo, operatorTimeZone)
+      : defaultRange.toAt;
+  const [cameraId, setCameraId] = useState<string>(initialCameraId);
   const [label, setLabel] = useState<CropTrackFilter["label"]>("all");
-  const [fromAt, setFromAt] = useState(() => defaultRange.fromAt);
-  const [toAt, setToAt] = useState(() => defaultRange.toAt);
+  const [fromAt, setFromAt] = useState(() => initialFromInput);
+  const [toAt, setToAt] = useState(() => initialToInput);
+  const [textQuery, setTextQuery] = useState("");
+  const [imageQueryName, setImageQueryName] = useState("");
+  const [imageQueryDataUrl, setImageQueryDataUrl] = useState("");
   const [includeRetired, setIncludeRetired] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [appliedFilter, setAppliedFilter] = useState<CropTrackFilter>(() =>
-    buildFilter({
-      cameraId: "",
+      buildFilter({
+      cameraId: initialCameraId,
       label: "all",
-      fromAt: defaultRange.fromAt,
-      toAt: defaultRange.toAt,
+      fromAt: initialFromInput,
+      toAt: initialToInput,
       includeRetired: false,
+      operatorTimeZone,
     }),
   );
+  const [appliedSearch, setAppliedSearch] = useState<CropTrackSearchInput>({});
   const [selectedTrackId, setSelectedTrackId] = useState<string>("");
   const [selectedObservation, setSelectedObservation] =
     useState<ObservationKey>("middle");
@@ -308,6 +366,10 @@ export function CropGalleryPage() {
     queryFn: () => apiClient.getVisionStatus(),
     refetchInterval: 10_000,
   });
+  const textSearchHint =
+    status.data?.embedding.modelName === "histogram-fallback"
+      ? "Text currently falls back to metadata ranking on this runtime; image search still runs face-first."
+      : "Text uses text-to-image similarity; text + image searches are merged.";
 
   const sources = useQuery({
     queryKey: queryKeys.visionSources,
@@ -323,12 +385,31 @@ export function CropGalleryPage() {
     }),
     [appliedFilter, currentPage],
   );
-  const appliedFilterKey = JSON.stringify(queryFilter);
+  const activeCropSearch = useMemo<CropTrackSearchInput>(
+    () => ({
+      ...queryFilter,
+      textQuery: appliedSearch.textQuery,
+      imageBase64: appliedSearch.imageBase64,
+    }),
+    [appliedSearch.imageBase64, appliedSearch.textQuery, queryFilter],
+  );
+  const hasSemanticSearch = Boolean(
+    activeCropSearch.textQuery?.trim() || activeCropSearch.imageBase64?.trim(),
+  );
+  const appliedFilterKey = JSON.stringify({
+    ...activeCropSearch,
+    imageBase64: activeCropSearch.imageBase64
+      ? `hash:${fingerprintString(activeCropSearch.imageBase64)}`
+      : undefined,
+  });
 
   const tracks = useQuery({
     queryKey: queryKeys.cropTracks(appliedFilterKey),
-    queryFn: () => apiClient.listCropTracks(queryFilter),
-    refetchInterval: 10_000,
+    queryFn: () =>
+      hasSemanticSearch
+        ? apiClient.searchCropTracks(activeCropSearch)
+        : apiClient.listCropTracks(queryFilter),
+    refetchInterval: hasSemanticSearch ? false : 10_000,
     placeholderData: keepPreviousData,
   });
 
@@ -377,16 +458,24 @@ export function CropGalleryPage() {
         fromAt,
         toAt,
         includeRetired,
+        operatorTimeZone,
       }),
     );
+    setAppliedSearch({
+      textQuery: textQuery.trim() || undefined,
+      imageBase64: imageQueryDataUrl || undefined,
+    });
   };
 
   const resetFilters = () => {
-    const nextRange = createDefaultRange();
+    const nextRange = createDefaultRange(operatorTimeZone);
     setCameraId("");
     setLabel("all");
     setFromAt(nextRange.fromAt);
     setToAt(nextRange.toAt);
+    setTextQuery("");
+    setImageQueryName("");
+    setImageQueryDataUrl("");
     setIncludeRetired(false);
     setCurrentPage(1);
     setAppliedFilter(
@@ -396,8 +485,29 @@ export function CropGalleryPage() {
         fromAt: nextRange.fromAt,
         toAt: nextRange.toAt,
         includeRetired: false,
+        operatorTimeZone,
       }),
     );
+    setAppliedSearch({});
+  };
+
+  const handleImageSelection = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setImageQueryName("");
+      setImageQueryDataUrl("");
+      return;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setImageQueryName(file.name);
+      setImageQueryDataUrl(dataUrl);
+    } catch {
+      setImageQueryName("");
+      setImageQueryDataUrl("");
+    }
   };
 
   return (
@@ -446,6 +556,44 @@ export function CropGalleryPage() {
             onChange={(event) => setToAt(event.target.value)}
           />
         </FilterField>
+        <FilterField label="Text Search">
+          <input
+            type="text"
+            className="form-input"
+            value={textQuery}
+            placeholder="Describe person, vehicle, or scene"
+            onChange={(event) => setTextQuery(event.target.value)}
+          />
+        </FilterField>
+        <FilterField label="Image Search">
+          <div className="space-y-2">
+            <input
+              type="file"
+              accept="image/*"
+              className="form-input"
+              onChange={(event) => void handleImageSelection(event)}
+            />
+            {imageQueryName ? (
+              <div className="flex items-center gap-2 text-xs text-[var(--qa-panel-text-subtle)]">
+                <span className="truncate">{imageQueryName}</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setImageQueryName("");
+                    setImageQueryDataUrl("");
+                  }}
+                >
+                  Clear
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs text-[var(--qa-panel-text-subtle)]">
+                Face is attempted first. If no face is found, image similarity falls back to object embeddings.
+              </p>
+            )}
+          </div>
+        </FilterField>
         <RoleGate anyOf={["site-admin", "platform-admin"]}>
           <Button
             size="sm"
@@ -459,6 +607,9 @@ export function CropGalleryPage() {
         <Button size="sm" variant="secondary" onClick={applyFilters}>
           Search Crops
         </Button>
+        <p className="text-xs text-[var(--qa-panel-text-subtle)]">
+          {timeZoneLabel} with a 10 minute default window. {textSearchHint}
+        </p>
         <label
           className={
             isDarkTheme
@@ -489,11 +640,14 @@ export function CropGalleryPage() {
                   : " Including retired mock-source history."}
               </CardDescription>
             </div>
-            <div className="text-right text-xs text-stone-400">
+            <div className="theme-panel-caption text-right text-xs">
               <p>{tracks.data?.totalCount ?? 0} tracks</p>
               <p>
                 Page {tracks.data?.page ?? 1} of {tracks.data?.totalPages ?? 1}
               </p>
+              {tracks.data?.searchModes?.length ? (
+                <p>Search: {tracks.data.searchModes.join(", ")}</p>
+              ) : null}
               <p>Queue: {status.data?.queueDepth ?? 0}</p>
               <p>Workers: {status.data?.segmentWorkerCount ?? 1}</p>
             </div>
@@ -502,7 +656,11 @@ export function CropGalleryPage() {
           {!tracks.data?.tracks.length ? (
             <EmptyState
               title="No tracks in this window"
-              description="Wait for recorded chunks to land or broaden the time range."
+              description={
+                hasSemanticSearch
+                  ? "No tracks matched the current text/image search inside this filter window."
+                  : "Wait for recorded chunks to land or broaden the time range."
+              }
             />
           ) : (
             <div className="space-y-3">
@@ -515,7 +673,7 @@ export function CropGalleryPage() {
                       setSelectedTrackId(track.id);
                       setSelectedObservation("middle");
                     }}
-                    className="rounded-md border border-stone-700 bg-stone-950/40 p-3 text-left transition-colors hover:border-stone-500"
+                    className="theme-panel-subtle p-3 text-left transition-colors hover:border-cyan-600/60"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
@@ -526,35 +684,35 @@ export function CropGalleryPage() {
                           {track.label} • {track.detectorLabel}
                         </CardDescription>
                       </div>
-                      <span className="rounded-full border border-stone-700 px-2 py-1 text-[11px] text-stone-300">
+                      <span className="theme-panel-muted px-2 py-1 text-[11px]">
                         {Math.round(track.maxConfidence * 100)}%
                       </span>
                     </div>
 
                     <div className="mt-3 space-y-1">
-                      <div className="aspect-[4/5] overflow-hidden rounded-md border border-stone-700 bg-stone-950">
+                      <div className="theme-panel-muted aspect-[4/5] overflow-hidden">
                         <img
                           src={track.middleCropDataUrl}
                           alt={`${track.cameraName} representative crop`}
                           className="h-full w-full object-cover"
                         />
                       </div>
-                      <p className="text-center text-[11px] text-stone-500">
+                      <p className="theme-panel-caption text-center text-[11px]">
                         Representative crop
                       </p>
                     </div>
 
-                    <div className="mt-3 grid gap-2 text-[11px] text-stone-400">
+                    <div className="theme-panel-description mt-3 grid gap-2 text-[11px]">
                       <div className="flex items-center justify-between gap-2">
                         <span>First seen</span>
                         <span>
-                          {new Date(track.firstSeenAt).toLocaleString()}
+                          {formatDateTimeInTimeZone(track.firstSeenAt, operatorTimeZone)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span>Last seen</span>
                         <span>
-                          {new Date(track.lastSeenAt).toLocaleString()}
+                          {formatDateTimeInTimeZone(track.lastSeenAt, operatorTimeZone)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between gap-2">
@@ -563,12 +721,23 @@ export function CropGalleryPage() {
                           {track.frameCount} @ {track.sampleFps} fps
                         </span>
                       </div>
+                      {track.searchReason ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <span>Match</span>
+                          <span>
+                            {track.searchReason}
+                            {typeof track.searchScore === "number"
+                              ? ` • ${(track.searchScore * 100).toFixed(1)}%`
+                              : ""}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                   </button>
                 ))}
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-md border border-stone-700 bg-stone-950/40 px-3 py-2 text-sm text-stone-300">
+              <div className="theme-panel-subtle flex items-center justify-between gap-3 px-3 py-2 text-sm">
                 <p>
                   Showing{" "}
                   {tracks.data.totalCount
@@ -767,6 +936,7 @@ export function CropGalleryPage() {
                           track={track}
                           observationKey={selectedObservation}
                           isDarkTheme={isDarkTheme}
+                          operatorTimeZone={operatorTimeZone}
                         />
 
                         <div className="grid gap-3 xl:grid-cols-[minmax(0,1.3fr)_360px]">
@@ -816,9 +986,10 @@ export function CropGalleryPage() {
                                 <span>Segment start</span>
                                 <span>
                                   {track.segmentStartAt
-                                    ? new Date(
+                                    ? formatDateTimeInTimeZone(
                                         track.segmentStartAt,
-                                      ).toLocaleString()
+                                        operatorTimeZone,
+                                      )
                                     : "n/a"}
                                 </span>
                               </div>

@@ -17,6 +17,8 @@ class FaceEmbeddingResult:
     status: str
     model_name: str
     vector: list[float] | None
+    detail: str | None = None
+    face_count: int = 0
 
 
 class FaceEmbedder:
@@ -76,11 +78,26 @@ class FaceEmbedder:
         crop_bgr: np.ndarray,
     ) -> FaceEmbeddingResult:
         if not self._enabled:
-            return FaceEmbeddingResult(status="disabled", model_name=self._model_name, vector=None)
+            return FaceEmbeddingResult(
+                status="disabled",
+                model_name=self._model_name,
+                vector=None,
+                detail="Face stage disabled by configuration.",
+            )
         if label != "person":
-            return FaceEmbeddingResult(status="skipped-label", model_name=self._model_name, vector=None)
+            return FaceEmbeddingResult(
+                status="skipped-label",
+                model_name=self._model_name,
+                vector=None,
+                detail="Track label is not person.",
+            )
         if duration_seconds < self._minimum_track_seconds:
-            return FaceEmbeddingResult(status="skipped-short-track", model_name=self._model_name, vector=None)
+            return FaceEmbeddingResult(
+                status="skipped-short-track",
+                model_name=self._model_name,
+                vector=None,
+                detail="Track did not satisfy minimum face duration.",
+            )
 
         self._probe_runtime(force=self._runtime_state != "ready")
         if self._runtime_state == "unreachable":
@@ -88,17 +105,54 @@ class FaceEmbedder:
                 status="service-unreachable",
                 model_name=self._model_name,
                 vector=None,
+                detail=self._runtime_detail,
             )
         if self._runtime_state != "ready":
             return FaceEmbeddingResult(
                 status="service-not-ready",
                 model_name=self._model_name,
                 vector=None,
+                detail=self._runtime_detail,
             )
 
-        ok, encoded = cv2.imencode(".jpg", crop_bgr)
+        return self._request_embedding(crop_bgr)
+
+    def embed_query_image(self, image_bgr: np.ndarray) -> FaceEmbeddingResult:
+        if not self._enabled:
+            return FaceEmbeddingResult(
+                status="disabled",
+                model_name=self._model_name,
+                vector=None,
+                detail="Face stage disabled by configuration.",
+            )
+
+        self._probe_runtime(force=self._runtime_state != "ready")
+        if self._runtime_state == "unreachable":
+            return FaceEmbeddingResult(
+                status="service-unreachable",
+                model_name=self._model_name,
+                vector=None,
+                detail=self._runtime_detail,
+            )
+        if self._runtime_state != "ready":
+            return FaceEmbeddingResult(
+                status="service-not-ready",
+                model_name=self._model_name,
+                vector=None,
+                detail=self._runtime_detail,
+            )
+
+        return self._request_embedding(image_bgr)
+
+    def _request_embedding(self, image_bgr: np.ndarray) -> FaceEmbeddingResult:
+        ok, encoded = cv2.imencode(".jpg", image_bgr)
         if not ok:
-            return FaceEmbeddingResult(status="encode-error", model_name=self._model_name, vector=None)
+            return FaceEmbeddingResult(
+                status="encode-error",
+                model_name=self._model_name,
+                vector=None,
+                detail="Unable to encode query image.",
+            )
 
         payload = {
             "imageBase64": base64.b64encode(encoded.tobytes()).decode("ascii"),
@@ -118,6 +172,7 @@ class FaceEmbedder:
                 status="service-unreachable",
                 model_name=self._model_name,
                 vector=None,
+                detail=self._runtime_detail,
             )
 
         model_name = str(body.get("modelName") or self._model_name)
@@ -130,6 +185,8 @@ class FaceEmbedder:
                 if body.get("vector") is not None
                 else None
             ),
+            detail=str(body.get("detail") or ""),
+            face_count=int(body.get("faceCount") or 0),
         )
 
     def _probe_runtime(self, *, force: bool = False) -> None:

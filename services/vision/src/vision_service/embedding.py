@@ -22,6 +22,7 @@ class CropEmbedder:
         self._model_name = model_name
         self._model = None
         self._preprocess = None
+        self._tokenizer = None
         self.runtime_model_name = "histogram-fallback"
 
         if not enabled:
@@ -41,6 +42,7 @@ class CropEmbedder:
             model.eval()
             self._model = model
             self._preprocess = preprocess
+            self._tokenizer = open_clip.get_tokenizer(model_name)
             self._torch = torch
             self.runtime_model_name = model_name
         except Exception as error:  # pragma: no cover - runtime dependency branch
@@ -68,9 +70,36 @@ class CropEmbedder:
             vector=vector,
         )
 
+    def embed_text(self, text: str) -> EmbeddingResult:
+        normalized = text.strip()
+        if not normalized:
+            return EmbeddingResult(
+                status="empty-text",
+                model_name=self.runtime_model_name,
+                vector=[],
+            )
+        if self._model is None or self._tokenizer is None:
+            return EmbeddingResult(
+                status="text-unsupported",
+                model_name=self.runtime_model_name,
+                vector=[],
+            )
+
+        tokens = self._tokenizer([normalized])
+        with self._torch.no_grad():
+            features = self._model.encode_text(tokens)
+            features = features / features.norm(dim=-1, keepdim=True)
+        vector = features[0].cpu().numpy().astype(float).tolist()
+        return EmbeddingResult(
+            status="ready",
+            model_name=self.runtime_model_name,
+            vector=vector,
+        )
+
     def _histogram_embedding(self, crop_bgr: np.ndarray) -> list[float]:
         resized = cv2.resize(crop_bgr, (32, 32), interpolation=cv2.INTER_AREA)
-        histogram = cv2.calcHist([resized], [0, 1, 2], None, [4, 4, 4], [0, 256] * 3)
+        # Keep fallback vectors aligned with the Qdrant object-embedding collection schema.
+        histogram = cv2.calcHist([resized], [0, 1, 2], None, [8, 8, 8], [0, 256] * 3)
         flattened = histogram.flatten().astype("float32")
         norm = float(np.linalg.norm(flattened))
         if norm > 0:

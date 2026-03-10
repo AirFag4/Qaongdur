@@ -570,26 +570,14 @@ class VisionRepository:
         page: int = 1,
         page_size: int = 20,
     ) -> dict[str, Any]:
-        conditions: list[str] = []
-        params: list[Any] = []
-        if not include_retired:
-            conditions.append("source.retired_at IS NULL")
-        if source_id:
-            conditions.append("track.source_id = ?")
-            params.append(source_id)
-        if camera_id:
-            conditions.append("track.camera_id = ?")
-            params.append(camera_id)
-        if label and label != "all":
-            conditions.append("track.label = ?")
-            params.append(label)
-        if from_at:
-            conditions.append("track.last_seen_at >= ?")
-            params.append(from_at)
-        if to_at:
-            conditions.append("track.first_seen_at <= ?")
-            params.append(to_at)
-        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        where_clause, params = self._build_track_where_clause(
+            source_id=source_id,
+            camera_id=camera_id,
+            label=label,
+            from_at=from_at,
+            to_at=to_at,
+            include_retired=include_retired,
+        )
         page_size = max(page_size, 1)
         page = max(page, 1)
         offset = (page - 1) * page_size
@@ -625,6 +613,129 @@ class VisionRepository:
                 "pageSize": page_size,
                 "totalPages": total_pages,
             }
+
+    def search_vector_candidates(
+        self,
+        *,
+        embedding_kind: str,
+        model_name: str,
+        source_id: str | None = None,
+        camera_id: str | None = None,
+        label: str | None = None,
+        from_at: str | None = None,
+        to_at: str | None = None,
+        include_retired: bool = False,
+    ) -> list[dict[str, Any]]:
+        where_clause, params = self._build_track_where_clause(
+            source_id=source_id,
+            camera_id=camera_id,
+            label=label,
+            from_at=from_at,
+            to_at=to_at,
+            include_retired=include_retired,
+        )
+        table_name = (
+            "track_face_embedding" if embedding_kind == "face" else "track_embedding"
+        )
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT
+                  track.id,
+                  track.last_seen_at,
+                  embedding.model_name,
+                  embedding.vector_json
+                FROM track
+                JOIN video_source AS source ON source.id = track.source_id
+                JOIN {table_name} AS embedding ON embedding.track_id = track.id
+                {where_clause}
+                AND embedding.model_name = ?
+                ORDER BY track.last_seen_at DESC
+                """
+                if where_clause
+                else f"""
+                SELECT
+                  track.id,
+                  track.last_seen_at,
+                  embedding.model_name,
+                  embedding.vector_json
+                FROM track
+                JOIN video_source AS source ON source.id = track.source_id
+                JOIN {table_name} AS embedding ON embedding.track_id = track.id
+                WHERE embedding.model_name = ?
+                ORDER BY track.last_seen_at DESC
+                """,
+                [*params, model_name],
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_crop_tracks_by_ids(self, track_ids: list[str]) -> list[dict[str, Any]]:
+        if not track_ids:
+            return []
+        placeholders = ", ".join("?" for _ in track_ids)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT track.*, source.frame_width AS source_frame_width, source.frame_height AS source_frame_height
+                FROM track
+                JOIN video_source AS source ON source.id = track.source_id
+                WHERE track.id IN ({placeholders})
+                """,
+                track_ids,
+            ).fetchall()
+            hydrated_by_id = {
+                str(row["id"]): self._hydrate_track(connection, dict(row))
+                for row in rows
+            }
+        return [hydrated_by_id[track_id] for track_id in track_ids if track_id in hydrated_by_id]
+
+    def search_text_candidates(
+        self,
+        *,
+        source_id: str | None = None,
+        camera_id: str | None = None,
+        label: str | None = None,
+        from_at: str | None = None,
+        to_at: str | None = None,
+        include_retired: bool = False,
+    ) -> list[dict[str, Any]]:
+        where_clause, params = self._build_track_where_clause(
+            source_id=source_id,
+            camera_id=camera_id,
+            label=label,
+            from_at=from_at,
+            to_at=to_at,
+            include_retired=include_retired,
+        )
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT
+                  track.id,
+                  track.last_seen_at,
+                  track.camera_name,
+                  track.label,
+                  track.detector_label
+                FROM track
+                JOIN video_source AS source ON source.id = track.source_id
+                {where_clause}
+                ORDER BY track.last_seen_at DESC
+                """
+                if where_clause
+                else """
+                SELECT
+                  track.id,
+                  track.last_seen_at,
+                  track.camera_name,
+                  track.label,
+                  track.detector_label
+                FROM track
+                JOIN video_source AS source ON source.id = track.source_id
+                ORDER BY track.last_seen_at DESC
+                """,
+                params,
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def purge_retired_sources(
         self,
@@ -730,3 +841,37 @@ class VisionRepository:
             "artifactCount": artifact_count,
             "freeBytes": max(storage_limit_bytes - used_bytes, 0),
         }
+
+    def _build_track_where_clause(
+        self,
+        *,
+        source_id: str | None,
+        camera_id: str | None,
+        label: str | None,
+        from_at: str | None,
+        to_at: str | None,
+        include_retired: bool,
+    ) -> tuple[str, list[Any]]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if not include_retired:
+            conditions.append("source.retired_at IS NULL")
+        if source_id:
+            conditions.append("track.source_id = ?")
+            params.append(source_id)
+        if camera_id:
+            conditions.append("track.camera_id = ?")
+            params.append(camera_id)
+        if label and label != "all":
+            conditions.append("track.label = ?")
+            params.append(label)
+        if from_at:
+            conditions.append("track.last_seen_at >= ?")
+            params.append(from_at)
+        if to_at:
+            conditions.append("track.first_seen_at <= ?")
+            params.append(to_at)
+        return (
+            f"WHERE {' AND '.join(conditions)}" if conditions else "",
+            params,
+        )

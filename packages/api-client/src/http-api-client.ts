@@ -5,7 +5,9 @@ import type {
   CropTrackDetail,
   CropTrackFilter,
   CropTrackPage,
+  CropTrackSearchInput,
   CreateCameraInput,
+  DeviceMapCamera,
   Device,
   Incident,
   LiveStreamTile,
@@ -132,6 +134,10 @@ export class HttpApiClient implements VmsApiClient {
     return this._request(appendSearch("/api/v1/devices", { siteId }));
   }
 
+  async listDeviceMapCameras(siteId?: string): Promise<DeviceMapCamera[]> {
+    return this._request(appendSearch("/api/v1/device-map", { siteId }));
+  }
+
   async listVisionSources(): Promise<VisionSource[]> {
     const response = await this._request<{ sources: VisionSource[] }>("/api/v1/vision/sources");
     return response.sources;
@@ -161,6 +167,13 @@ export class HttpApiClient implements VmsApiClient {
         pageSize: filter?.pageSize ? String(filter.pageSize) : undefined,
       }),
     );
+  }
+
+  async searchCropTracks(input: CropTrackSearchInput): Promise<CropTrackPage> {
+    return this._request("/api/v1/vision/crop-search", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
   }
 
   async getCropTrack(trackId: string): Promise<CropTrackDetail | undefined> {

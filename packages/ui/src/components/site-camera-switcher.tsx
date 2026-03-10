@@ -19,9 +19,9 @@ export function SiteCameraSwitcher({
   onCameraToggle,
 }: SiteCameraSwitcherProps) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-stone-700 bg-stone-900/80 p-3">
+    <div className="theme-panel flex flex-col gap-3 rounded-lg p-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+        <p className="theme-panel-description text-xs font-semibold uppercase tracking-wide">
           Site Context
         </p>
         <Button
@@ -34,7 +34,7 @@ export function SiteCameraSwitcher({
         </Button>
       </div>
       <select
-        className="h-9 rounded-md border border-stone-700 bg-stone-950 px-2 text-sm text-stone-100 outline-none focus:border-cyan-700"
+        className="form-select"
         value={siteId ?? ""}
         onChange={(event) => onSiteChange(event.target.value || undefined)}
       >

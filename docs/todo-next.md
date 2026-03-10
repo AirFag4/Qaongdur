@@ -10,9 +10,10 @@ Near-term follow-up items after the current recorded-chunk vision slice.
 ## Runtime Stability
 
 - Reduce or eliminate `face-api` timeout failures under processing load.
-- Verify Qdrant end-to-end on the live stack after the UUID-based point-id fix, and add a retry or backfill path for any segments processed while vector storage was degraded.
+- Add a retry or backfill path for any segments processed while vector storage was degraded before the 512-dimensional fallback alignment.
 - Make `VisionSource.processedSegmentCount`, `latestProcessedAt`, and `lastSegmentAt` reflect live progress correctly.
 - Add a writable cleanup action for retired mock-source history instead of relying only on the env-backed purge toggle.
+- Make MobileCLIP startup reliable enough on this machine that `VISION_EMBEDDING_ENABLED=true` is practical again instead of relying on `text-fallback`.
 
 ## Throughput
 
@@ -35,10 +36,12 @@ Near-term follow-up items after the current recorded-chunk vision slice.
 - Surface vector-store and face-sidecar degradation clearly in the Settings and crop pages.
 - Make recording segment duration and related runtime knobs writable from the Settings page instead of env-only.
 - Add source and time summaries to the crop page so active-versus-retired history is easier to reason about at a glance.
+- Add a richer search summary so operators can tell whether a crop result came from face-image, object-image, true text embedding, or metadata fallback.
 
 ## Vision Feature Follow-Ups
 
 - Add ROI definition and filtering to the persisted schema and processing loop.
-- Add search by embedding once vector storage is healthy.
-- Improve face handling so successful face vectors and failures are visible per track.
+- Harden text, image, and face search for real MobileCLIP runtime instead of only low-spec fallback mode.
+- Improve face handling so successful face vectors, failures, and multi-face outcomes are visible per track.
+- Add identity lists, subject review, and face-match audit actions on top of the current face-first search path.
 - Keep VLM disabled until the recorded-chunk path, vector storage, and face reliability are stable.

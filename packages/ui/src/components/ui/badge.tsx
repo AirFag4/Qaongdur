@@ -7,7 +7,7 @@ const badgeVariants = cva(
   {
     variants: {
       tone: {
-        stone: "border-stone-600 bg-stone-800 text-stone-200",
+        stone: "border-[var(--qa-badge-stone-border)] bg-[var(--qa-badge-stone-bg)] text-[var(--qa-badge-stone-text)]",
         cyan: "border-cyan-800 bg-cyan-950/70 text-cyan-200",
         amber: "border-amber-700 bg-amber-950/60 text-amber-200",
         red: "border-red-800 bg-red-950/60 text-red-200",

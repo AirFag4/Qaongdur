@@ -28,6 +28,12 @@ const siteCatalog: Site[] = [
   { id: "site-dad-01", code: "DAD-01", name: "Da Nang Yard", region: "VN-Central" },
 ];
 
+const siteMapCenterById: Record<string, { latitude: number; longitude: number }> = {
+  "site-hcm-01": { latitude: 10.7769, longitude: 106.7009 },
+  "site-bkk-01": { latitude: 13.7563, longitude: 100.5018 },
+  "site-dad-01": { latitude: 16.0544, longitude: 108.2022 },
+};
+
 const seeded = (seed: number) => Math.abs(Math.sin(seed * 987.31));
 
 const healthFromSeed = (seed: number): HealthStatus => {
@@ -64,11 +70,16 @@ const minutesAgoIso = (minutes: number) =>
 const cameraCatalog: Camera[] = siteCatalog.flatMap((site, siteIndex) =>
   Array.from({ length: 12 }, (_, cameraIndex) => {
     const idx = siteIndex * 100 + cameraIndex;
+    const mapCenter = siteMapCenterById[site.id];
     return {
       id: `cam-${site.code.toLowerCase()}-${String(cameraIndex + 1).padStart(2, "0")}`,
       siteId: site.id,
       name: `${site.code} Camera ${String(cameraIndex + 1).padStart(2, "0")}`,
       zone: zones[cameraIndex % zones.length],
+      latitude: Number((mapCenter.latitude + (cameraIndex % 4) * 0.0024 - 0.0036).toFixed(6)),
+      longitude: Number((mapCenter.longitude + Math.floor(cameraIndex / 4) * 0.0028 - 0.0028).toFixed(6)),
+      heading: (cameraIndex * 30) % 360,
+      locationNote: `${zones[cameraIndex % zones.length]} coverage`,
       streamUrl: `rtsp://stream.${site.code.toLowerCase()}.vms.local/${cameraIndex + 1}`,
       health: healthFromSeed(idx),
       fps: 20 + (cameraIndex % 3) * 5,
@@ -270,6 +281,10 @@ const deviceCatalog: Device[] = [
       siteId: camera.siteId,
       name: camera.name,
       type: "camera",
+      latitude: camera.latitude,
+      longitude: camera.longitude,
+      heading: camera.heading,
+      locationNote: camera.locationNote,
       model: camera.tags.includes("ptz") ? "Axis Q6225-LE" : "Hikvision DS-2CD",
       ipAddress: `10.${Math.floor(seeded(camera.id.length) * 10 + 10)}.${Math.floor(
         seeded(camera.id.length + 1) * 50 + 10,

@@ -11,6 +11,10 @@ def test_camera_store_persists_camera_records(tmp_path) -> None:
         name="Gate Camera",
         zone="North Gate",
         rtsp_url="rtsp://camera.local/stream",
+        latitude=13.7563,
+        longitude=100.5018,
+        heading=90.0,
+        location_note="North gate pole",
         rtsp_transport="udp",
         rtsp_any_port=True,
     )
@@ -22,6 +26,10 @@ def test_camera_store_persists_camera_records(tmp_path) -> None:
     assert cameras[0].id == record.id
     assert cameras[0].path_name == record.path_name
     assert cameras[0].rtsp_url == "rtsp://camera.local/stream"
+    assert cameras[0].latitude == 13.7563
+    assert cameras[0].longitude == 100.5018
+    assert cameras[0].heading == 90.0
+    assert cameras[0].location_note == "North gate pole"
     assert cameras[0].rtsp_transport == "udp"
     assert cameras[0].rtsp_any_port is True
 
@@ -111,3 +119,7 @@ def test_camera_store_defaults_legacy_records_to_automatic_transport(tmp_path) -
 
     assert camera.rtsp_transport == "automatic"
     assert camera.rtsp_any_port is False
+    assert camera.latitude is None
+    assert camera.longitude is None
+    assert camera.heading is None
+    assert camera.location_note is None

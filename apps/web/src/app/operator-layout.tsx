@@ -12,6 +12,11 @@ import {
 import type { RealtimeEvent } from "@qaongdur/types";
 import { apiClient, queryKeys, realtimeSocket } from "../lib/api";
 import { AgentChatRail } from "../components/agent-chat-rail";
+import {
+  type OperatorTimeZonePreference,
+  getOperatorTimeZonePreference,
+  OPERATOR_TIME_ZONE_STORAGE_KEY,
+} from "../lib/bkk-time";
 import type { OperatorOutletContext } from "./operator-context";
 
 const navItems: AppNavItem[] = [
@@ -59,6 +64,8 @@ export function OperatorLayout() {
       ? "polarized-light"
       : "polarized-dark",
   );
+  const [operatorTimeZone, setOperatorTimeZone] =
+    useState<OperatorTimeZonePreference>(() => getOperatorTimeZonePreference());
 
   const sites = useQuery({
     queryKey: queryKeys.sites,
@@ -72,6 +79,13 @@ export function OperatorLayout() {
   useEffect(() => {
     window.localStorage.setItem("qaongdur-theme-mode", themeMode);
   }, [themeMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      OPERATOR_TIME_ZONE_STORAGE_KEY,
+      operatorTimeZone,
+    );
+  }, [operatorTimeZone]);
 
   useEffect(() => {
     const unsubscribe = realtimeSocket.subscribe((event) => {
@@ -182,6 +196,7 @@ export function OperatorLayout() {
     liveGridSize,
     recentEvents,
     themeMode,
+    operatorTimeZone,
     setSiteId: (nextSiteId) => {
       setSiteId(nextSiteId);
       setSelectedCameraIds([]);
@@ -189,6 +204,7 @@ export function OperatorLayout() {
     setSelectedCameraIds,
     toggleCameraSelection,
     setLiveGridSize,
+    setOperatorTimeZone,
     openCommandPalette: () => setCommandPaletteOpen(true),
   };
 

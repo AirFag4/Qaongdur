@@ -15,6 +15,19 @@ class SegmentScanRequest(BaseModel):
     sourceIds: list[str] = Field(default_factory=list)
 
 
+class CropSearchRequest(BaseModel):
+    sourceId: str | None = None
+    cameraId: str | None = None
+    label: str | None = Field(default=None, pattern="^(person|vehicle|all)?$")
+    fromAt: str | None = None
+    toAt: str | None = None
+    includeRetired: bool = False
+    page: int = 1
+    pageSize: int = 20
+    textQuery: str | None = None
+    imageBase64: str | None = None
+
+
 @lru_cache(maxsize=1)
 def get_pipeline_service() -> VisionPipelineService:
     return VisionPipelineService(get_settings())
@@ -95,6 +108,24 @@ def create_app() -> FastAPI:
         if track is None:
             raise HTTPException(status_code=404, detail=f"Track {track_id} was not found.")
         return track
+
+    @app.post("/api/v1/vision/crop-search")
+    async def search_crop_tracks(body: CropSearchRequest) -> dict[str, object]:
+        try:
+            return pipeline.search_crop_tracks(
+                text_query=body.textQuery,
+                image_base64=body.imageBase64,
+                source_id=body.sourceId,
+                camera_id=body.cameraId,
+                label=body.label,
+                from_at=body.fromAt,
+                to_at=body.toAt,
+                include_retired=body.includeRetired,
+                page=body.page,
+                page_size=body.pageSize,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     return app
 

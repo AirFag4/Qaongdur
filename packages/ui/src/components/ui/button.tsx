@@ -8,11 +8,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-stone-200 text-stone-900 hover:bg-stone-100 focus-visible:ring-stone-400",
+          "bg-[var(--qa-button-default-bg)] text-[var(--qa-button-default-text)] hover:bg-[var(--qa-button-default-hover)] focus-visible:ring-stone-400",
         secondary:
-          "bg-stone-800 text-stone-100 hover:bg-stone-700 focus-visible:ring-cyan-600",
+          "bg-[var(--qa-button-secondary-bg)] text-[var(--qa-button-secondary-text)] hover:bg-[var(--qa-button-secondary-hover)] focus-visible:ring-cyan-600",
         ghost:
-          "bg-transparent text-stone-200 hover:bg-stone-800/70 focus-visible:ring-cyan-600",
+          "bg-transparent text-[var(--qa-button-ghost-text)] hover:bg-[var(--qa-button-ghost-hover-bg)] focus-visible:ring-cyan-600",
         attention:
           "bg-amber-500 text-stone-950 hover:bg-amber-400 focus-visible:ring-amber-300",
       },

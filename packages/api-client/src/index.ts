@@ -72,6 +72,11 @@ export const createApiClient = (config?: HttpApiClientConfig): VmsApiClient => {
         () => httpClient.listDevices(siteId),
         () => mockApiClient.listDevices(siteId),
       )(),
+    listDeviceMapCameras: (siteId) =>
+      withFallback(
+        () => httpClient.listDeviceMapCameras(siteId),
+        () => mockApiClient.listDeviceMapCameras(siteId),
+      )(),
     listVisionSources: () =>
       withFallback(
         () => httpClient.listVisionSources(),
@@ -87,6 +92,11 @@ export const createApiClient = (config?: HttpApiClientConfig): VmsApiClient => {
       withFallback(
         () => httpClient.listCropTracks(filter),
         () => mockApiClient.listCropTracks(filter),
+      )(),
+    searchCropTracks: (input) =>
+      withFallback(
+        () => httpClient.searchCropTracks(input),
+        () => mockApiClient.searchCropTracks(input),
       )(),
     getCropTrack: (trackId) =>
       withFallback(
