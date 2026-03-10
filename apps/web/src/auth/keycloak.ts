@@ -23,6 +23,16 @@ export const getControlApiBaseUrl = () =>
 export const getStepUpAcr = () =>
   import.meta.env.VITE_KEYCLOAK_STEP_UP_ACR ?? "urn:qaongdur:loa:2";
 
+export const getKeycloakAdminUsersUrl = () => {
+  if (configError) {
+    return undefined;
+  }
+
+  const keycloakUrl = import.meta.env.VITE_KEYCLOAK_URL!;
+  const realm = import.meta.env.VITE_KEYCLOAK_REALM!;
+  return `${keycloakUrl}/admin/${realm}/console/#/${realm}/users`;
+};
+
 export const getKeycloakClient = () => {
   if (configError) {
     throw new Error(configError);

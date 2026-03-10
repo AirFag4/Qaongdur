@@ -9,6 +9,7 @@ export interface AuthContextValue {
   session?: AuthSession;
   error?: string;
   login: (options?: KeycloakLoginOptions) => Promise<void>;
+  register: () => Promise<void>;
   logout: () => Promise<void>;
   registerPasskey: () => Promise<void>;
   requestStepUp: (reason: string) => Promise<void>;
