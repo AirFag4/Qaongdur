@@ -1,10 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { Badge, Button, Card, CardDescription, CardTitle, EmptyState, LoadingState } from "@qaongdur/ui";
 import { useAuth } from "../auth/use-auth";
+import { getKeycloakAdminUsersUrl, getKeycloakClient } from "../auth/keycloak";
 import { apiClient, queryKeys } from "../lib/api";
 
 export function SettingsPage() {
   const auth = useAuth();
+  const isRealmAdmin = Boolean(
+    getKeycloakClient().tokenParsed?.realm_access?.roles?.includes("realm-admin"),
+  );
+
+  const keycloakAdminUsersUrl = getKeycloakAdminUsersUrl();
   const settings = useQuery({
     queryKey: queryKeys.systemSettings,
     queryFn: () => apiClient.getSystemSettings(),
@@ -59,6 +65,15 @@ export function SettingsPage() {
             <Button size="sm" variant="secondary" onClick={() => void auth.registerPasskey()}>
               Register Passkey
             </Button>
+            {isRealmAdmin && keycloakAdminUsersUrl ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => window.open(keycloakAdminUsersUrl, "_blank", "noopener,noreferrer")}
+              >
+                Add User In Keycloak
+              </Button>
+            ) : null}
             <Button size="sm" variant="ghost" onClick={() => void auth.requestStepUp("settings-auth-review")}>
               Step-Up Reauth
             </Button>

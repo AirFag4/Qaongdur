@@ -24,7 +24,7 @@ function App() {
   }
 
   if (auth.status === "unauthenticated") {
-    return <AuthScreen onLogin={() => auth.login()} />;
+    return <AuthScreen onLogin={() => auth.login()} onRegister={() => auth.register()} />;
   }
 
   return (

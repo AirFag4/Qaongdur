@@ -203,6 +203,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     });
   };
 
+  const register = async () => {
+    await login({ action: "register" });
+  };
+
   const registerPasskey = async () => {
     await login({ action: "webauthn-register-passwordless" });
   };
@@ -228,6 +232,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         session,
         error,
         login,
+        register,
         logout,
         registerPasskey,
         requestStepUp,
