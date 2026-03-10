@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
@@ -13,6 +18,7 @@ import {
 } from "@qaongdur/ui";
 import type { CropTrackDetail, CropTrackFilter } from "@qaongdur/types";
 import { RoleGate } from "../auth/role-gate";
+import { useOperatorOutlet } from "../app/use-operator-outlet";
 import { apiClient, queryKeys } from "../lib/api";
 
 const formatBytes = (bytes: number) => {
@@ -43,7 +49,9 @@ const toIsoOrUndefined = (value: string) => {
     return undefined;
   }
   const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? undefined : new Date(timestamp).toISOString();
+  return Number.isNaN(timestamp)
+    ? undefined
+    : new Date(timestamp).toISOString();
 };
 
 const buildFilter = ({
@@ -99,7 +107,8 @@ const createPlaybackSearch = (track: CropTrackDetail) => {
   const to =
     track.segmentStartAt && track.segmentDurationSec
       ? new Date(
-          new Date(track.segmentStartAt).getTime() + track.segmentDurationSec * 1000,
+          new Date(track.segmentStartAt).getTime() +
+            track.segmentDurationSec * 1000,
         ).toISOString()
       : track.lastSeenAt;
   const params = new URLSearchParams({
@@ -114,12 +123,17 @@ const createPlaybackSearch = (track: CropTrackDetail) => {
 function TrackObservationViewer({
   track,
   observationKey,
+  isDarkTheme,
 }: {
   track: CropTrackDetail;
   observationKey: ObservationKey;
+  isDarkTheme: boolean;
 }) {
   const observation = observationFrameFor(track, observationKey);
-  const [loadedFrameSize, setLoadedFrameSize] = useState({ width: 0, height: 0 });
+  const [loadedFrameSize, setLoadedFrameSize] = useState({
+    width: 0,
+    height: 0,
+  });
   const frameWidth =
     track.sourceFrameWidth && track.sourceFrameWidth > 0
       ? track.sourceFrameWidth
@@ -129,7 +143,9 @@ function TrackObservationViewer({
       ? track.sourceFrameHeight
       : loadedFrameSize.height;
   const bbox = observation.bbox;
-  const hasOverlay = Boolean(observation.frameSrc && bbox && frameWidth > 0 && frameHeight > 0);
+  const hasOverlay = Boolean(
+    observation.frameSrc && bbox && frameWidth > 0 && frameHeight > 0,
+  );
 
   const overlayStyle =
     hasOverlay && bbox
@@ -146,18 +162,48 @@ function TrackObservationViewer({
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <p className="text-sm font-medium text-stone-100">
-              {OBSERVATION_OPTIONS.find((option) => option.key === observationKey)?.label} observation
+            <p
+              className={
+                isDarkTheme
+                  ? "text-sm font-medium text-stone-100"
+                  : "text-sm font-medium text-slate-900"
+              }
+            >
+              {
+                OBSERVATION_OPTIONS.find(
+                  (option) => option.key === observationKey,
+                )?.label
+              }{" "}
+              observation
             </p>
-            <p className="text-xs text-stone-400">
-              {new Date(observation.happenedAt).toLocaleString()} • {observation.offsetLabel}
+            <p
+              className={
+                isDarkTheme
+                  ? "text-xs text-stone-400"
+                  : "text-xs text-slate-500"
+              }
+            >
+              {new Date(observation.happenedAt).toLocaleString()} •{" "}
+              {observation.offsetLabel}
             </p>
           </div>
-          <span className="rounded-full border border-stone-700 px-2 py-1 text-[11px] text-stone-300">
+          <span
+            className={
+              isDarkTheme
+                ? "rounded-full border border-stone-700 px-2 py-1 text-[11px] text-stone-300"
+                : "rounded-full border border-slate-300 px-2 py-1 text-[11px] text-slate-600"
+            }
+          >
             {track.detectorLabel}
           </span>
         </div>
-        <div className="relative aspect-video overflow-hidden rounded-md border border-stone-700 bg-stone-950">
+        <div
+          className={
+            isDarkTheme
+              ? "relative aspect-video overflow-hidden rounded-md border border-stone-700 bg-stone-950"
+              : "relative aspect-video overflow-hidden rounded-md border border-slate-300 bg-white"
+          }
+        >
           <img
             src={observation.frameSrc ?? observation.cropSrc}
             alt={`${track.cameraName} ${observationKey} observation`}
@@ -182,21 +228,42 @@ function TrackObservationViewer({
         </div>
         {!observation.frameSrc ? (
           <p className="text-xs text-amber-300">
-            Source frame overlay is not available for this track yet. Showing the stored crop instead.
+            Source frame overlay is not available for this track yet. Showing
+            the stored crop instead.
           </p>
         ) : null}
       </div>
 
       <div className="space-y-2">
-        <p className="text-xs uppercase tracking-wide text-stone-500">Stored crop</p>
-        <div className="aspect-[4/5] overflow-hidden rounded-md border border-stone-700 bg-stone-950">
+        <p
+          className={
+            isDarkTheme
+              ? "text-xs uppercase tracking-wide text-stone-500"
+              : "text-xs uppercase tracking-wide text-slate-500"
+          }
+        >
+          Stored crop
+        </p>
+        <div
+          className={
+            isDarkTheme
+              ? "aspect-[4/5] overflow-hidden rounded-md border border-stone-700 bg-stone-950"
+              : "aspect-[4/5] overflow-hidden rounded-md border border-slate-300 bg-white"
+          }
+        >
           <img
             src={observation.cropSrc}
             alt={`${track.cameraName} ${observationKey} crop`}
             className="h-full w-full object-cover"
           />
         </div>
-        <div className="rounded-md border border-stone-700 bg-stone-950/60 p-3 text-xs text-stone-300">
+        <div
+          className={
+            isDarkTheme
+              ? "rounded-md border border-stone-700 bg-stone-950/60 p-3 text-xs text-stone-300"
+              : "rounded-md border border-slate-300 bg-slate-100 p-3 text-xs text-slate-700"
+          }
+        >
           <div className="flex items-center justify-between gap-2">
             <span>Captured</span>
             <span>{new Date(observation.happenedAt).toLocaleTimeString()}</span>
@@ -213,6 +280,8 @@ function TrackObservationViewer({
 
 export function CropGalleryPage() {
   const queryClient = useQueryClient();
+  const { themeMode } = useOperatorOutlet();
+  const isDarkTheme = themeMode === "polarized-dark";
   const navigate = useNavigate();
   const defaultRange = useMemo(() => createDefaultRange(), []);
   const [cameraId, setCameraId] = useState<string>("");
@@ -231,7 +300,8 @@ export function CropGalleryPage() {
     }),
   );
   const [selectedTrackId, setSelectedTrackId] = useState<string>("");
-  const [selectedObservation, setSelectedObservation] = useState<ObservationKey>("middle");
+  const [selectedObservation, setSelectedObservation] =
+    useState<ObservationKey>("middle");
 
   const status = useQuery({
     queryKey: queryKeys.visionStatus,
@@ -351,7 +421,9 @@ export function CropGalleryPage() {
           <select
             className="form-input"
             value={label ?? "all"}
-            onChange={(event) => setLabel(event.target.value as CropTrackFilter["label"])}
+            onChange={(event) =>
+              setLabel(event.target.value as CropTrackFilter["label"])
+            }
           >
             <option value="all">All labels</option>
             <option value="person">Person</option>
@@ -387,7 +459,13 @@ export function CropGalleryPage() {
         <Button size="sm" variant="secondary" onClick={applyFilters}>
           Search Crops
         </Button>
-        <label className="flex items-center gap-2 rounded-md border border-stone-700 bg-stone-950/40 px-3 py-2 text-xs text-stone-300">
+        <label
+          className={
+            isDarkTheme
+              ? "flex items-center gap-2 rounded-md border border-stone-700 bg-stone-950/40 px-3 py-2 text-xs text-stone-300"
+              : "flex items-center gap-2 rounded-md border border-slate-300 bg-white/80 px-3 py-2 text-xs text-slate-700"
+          }
+        >
           <input
             type="checkbox"
             className="accent-cyan-600"
@@ -404,7 +482,8 @@ export function CropGalleryPage() {
             <div>
               <CardTitle>Track Gallery</CardTitle>
               <CardDescription>
-                Representative crops from automatically processed recording chunks, filtered by real capture time.
+                Representative crops from automatically processed recording
+                chunks, filtered by real capture time.
                 {!appliedFilter.includeRetired
                   ? " Showing current active sources only."
                   : " Including retired mock-source history."}
@@ -440,7 +519,9 @@ export function CropGalleryPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <CardTitle className="truncate text-sm">{track.cameraName}</CardTitle>
+                        <CardTitle className="truncate text-sm">
+                          {track.cameraName}
+                        </CardTitle>
                         <CardDescription>
                           {track.label} • {track.detectorLabel}
                         </CardDescription>
@@ -458,17 +539,23 @@ export function CropGalleryPage() {
                           className="h-full w-full object-cover"
                         />
                       </div>
-                      <p className="text-center text-[11px] text-stone-500">Representative crop</p>
+                      <p className="text-center text-[11px] text-stone-500">
+                        Representative crop
+                      </p>
                     </div>
 
                     <div className="mt-3 grid gap-2 text-[11px] text-stone-400">
                       <div className="flex items-center justify-between gap-2">
                         <span>First seen</span>
-                        <span>{new Date(track.firstSeenAt).toLocaleString()}</span>
+                        <span>
+                          {new Date(track.firstSeenAt).toLocaleString()}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span>Last seen</span>
-                        <span>{new Date(track.lastSeenAt).toLocaleString()}</span>
+                        <span>
+                          {new Date(track.lastSeenAt).toLocaleString()}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span>Frames</span>
@@ -499,7 +586,9 @@ export function CropGalleryPage() {
                     size="sm"
                     variant="ghost"
                     disabled={tracks.data.page <= 1}
-                    onClick={() => setCurrentPage((page) => Math.max(page - 1, 1))}
+                    onClick={() =>
+                      setCurrentPage((page) => Math.max(page - 1, 1))
+                    }
                   >
                     Previous
                   </Button>
@@ -526,41 +615,119 @@ export function CropGalleryPage() {
         <div>
           <CardTitle>Vision Status</CardTitle>
           <CardDescription>
-            Automatic processing runs against finalized MediaMTX recording chunks, not the original mock files.
+            Automatic processing runs against finalized MediaMTX recording
+            chunks, not the original mock files.
           </CardDescription>
         </div>
 
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300">
-            <p className="text-xs uppercase tracking-wide text-stone-500">Latest job</p>
+          <div
+            className={
+              isDarkTheme
+                ? "rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300"
+                : "rounded-md border border-slate-300 bg-white/85 p-3 text-sm text-slate-700"
+            }
+          >
+            <p
+              className={
+                isDarkTheme
+                  ? "text-xs uppercase tracking-wide text-stone-500"
+                  : "text-xs uppercase tracking-wide text-slate-500"
+              }
+            >
+              Latest job
+            </p>
             <p className="mt-1">{status.data?.latestJob?.status ?? "idle"}</p>
           </div>
-          <div className="rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300">
-            <p className="text-xs uppercase tracking-wide text-stone-500">Storage used</p>
-            <p className="mt-1">{formatBytes(status.data?.storage.usedBytes ?? 0)}</p>
+          <div
+            className={
+              isDarkTheme
+                ? "rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300"
+                : "rounded-md border border-slate-300 bg-white/85 p-3 text-sm text-slate-700"
+            }
+          >
+            <p
+              className={
+                isDarkTheme
+                  ? "text-xs uppercase tracking-wide text-stone-500"
+                  : "text-xs uppercase tracking-wide text-slate-500"
+              }
+            >
+              Storage used
+            </p>
+            <p className="mt-1">
+              {formatBytes(status.data?.storage.usedBytes ?? 0)}
+            </p>
           </div>
-          <div className="rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300">
-            <p className="text-xs uppercase tracking-wide text-stone-500">Detector</p>
+          <div
+            className={
+              isDarkTheme
+                ? "rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300"
+                : "rounded-md border border-slate-300 bg-white/85 p-3 text-sm text-slate-700"
+            }
+          >
+            <p
+              className={
+                isDarkTheme
+                  ? "text-xs uppercase tracking-wide text-stone-500"
+                  : "text-xs uppercase tracking-wide text-slate-500"
+              }
+            >
+              Detector
+            </p>
             <p className="mt-1">{status.data?.detector.modelName}</p>
           </div>
-          <div className="rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300">
-            <p className="text-xs uppercase tracking-wide text-stone-500">Vector store</p>
-            <p className="mt-1">{status.data?.vectorStore?.provider ?? "n/a"}</p>
+          <div
+            className={
+              isDarkTheme
+                ? "rounded-md border border-stone-700 bg-stone-950/60 p-3 text-sm text-stone-300"
+                : "rounded-md border border-slate-300 bg-white/85 p-3 text-sm text-slate-700"
+            }
+          >
+            <p
+              className={
+                isDarkTheme
+                  ? "text-xs uppercase tracking-wide text-stone-500"
+                  : "text-xs uppercase tracking-wide text-slate-500"
+              }
+            >
+              Vector store
+            </p>
+            <p className="mt-1">
+              {status.data?.vectorStore?.provider ?? "n/a"}
+            </p>
           </div>
         </div>
       </Card>
 
       {selectedTrackId ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <Card className="max-h-[92vh] w-full max-w-[1320px] overflow-auto border border-stone-700 bg-stone-900/95">
-            <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-stone-700 bg-stone-900/95 px-4 py-3">
+          <Card
+            className={
+              isDarkTheme
+                ? "max-h-[92vh] w-full max-w-[1320px] overflow-auto border border-stone-700 bg-stone-900/95"
+                : "max-h-[92vh] w-full max-w-[1320px] overflow-auto border border-slate-300 bg-white/95"
+            }
+          >
+            <div
+              className={
+                isDarkTheme
+                  ? "sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-stone-700 bg-stone-900/95 px-4 py-3"
+                  : "sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-300 bg-white/95 px-4 py-3"
+              }
+            >
               <div>
                 <CardTitle>Track Investigation</CardTitle>
                 <CardDescription>
-                  Review the saved observation frames and overlays for this track.
+                  Review the saved observation frames and overlays for this
+                  track.
                 </CardDescription>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => setSelectedTrackId("")}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelectedTrackId("")}
+              >
                 Close
               </Button>
             </div>
@@ -579,121 +746,159 @@ export function CropGalleryPage() {
                     const track = selectedTrack.data;
                     return (
                       <>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {OBSERVATION_OPTIONS.map((option) => (
-                      <Button
-                        key={option.key}
-                        size="sm"
-                        variant={selectedObservation === option.key ? "default" : "ghost"}
-                        onClick={() => setSelectedObservation(option.key)}
-                      >
-                        {option.label}
-                      </Button>
-                    ))}
-                  </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {OBSERVATION_OPTIONS.map((option) => (
+                            <Button
+                              key={option.key}
+                              size="sm"
+                              variant={
+                                selectedObservation === option.key
+                                  ? "default"
+                                  : "ghost"
+                              }
+                              onClick={() => setSelectedObservation(option.key)}
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
+                        </div>
 
-                  <TrackObservationViewer
-                    track={track}
-                    observationKey={selectedObservation}
-                  />
+                        <TrackObservationViewer
+                          track={track}
+                          observationKey={selectedObservation}
+                          isDarkTheme={isDarkTheme}
+                        />
 
-                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1.3fr)_360px]">
-                    <Card className="space-y-3 border border-stone-700 bg-stone-950/50">
-                      <div>
-                        <CardTitle>Track Summary</CardTitle>
-                        <CardDescription>
-                          {track.cameraName} • {track.label}
-                        </CardDescription>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => navigate(`/live?cameraId=${encodeURIComponent(track.cameraId)}`)}
-                        >
-                          Open Live
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => navigate(createPlaybackSearch(track))}
-                        >
-                          Open Playback Window
-                        </Button>
-                      </div>
-                      <div className="grid gap-2 text-sm text-stone-300">
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Segment start</span>
-                          <span>
-                            {track.segmentStartAt
-                              ? new Date(track.segmentStartAt).toLocaleString()
-                              : "n/a"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Frames</span>
-                          <span>
-                            {track.frameCount} @ {track.sampleFps} fps
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Embedding</span>
-                          <span>
-                            {track.embeddingStatus}
-                            {track.embeddingDim
-                              ? ` • ${track.embeddingDim}d`
-                              : ""}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Face</span>
-                          <span>
-                            {track.faceStatus}
-                            {track.faceDim ? ` • ${track.faceDim}d` : ""}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Closed</span>
-                          <span>{track.closedReason}</span>
-                        </div>
-                      </div>
-                    </Card>
+                        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.3fr)_360px]">
+                          <Card
+                            className={
+                              isDarkTheme
+                                ? "space-y-3 border border-stone-700 bg-stone-950/50"
+                                : "space-y-3 border border-slate-300 bg-slate-100/70"
+                            }
+                          >
+                            <div>
+                              <CardTitle>Track Summary</CardTitle>
+                              <CardDescription>
+                                {track.cameraName} • {track.label}
+                              </CardDescription>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  navigate(
+                                    `/live?cameraId=${encodeURIComponent(track.cameraId)}`,
+                                  )
+                                }
+                              >
+                                Open Live
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() =>
+                                  navigate(createPlaybackSearch(track))
+                                }
+                              >
+                                Open Playback Window
+                              </Button>
+                            </div>
+                            <div
+                              className={
+                                isDarkTheme
+                                  ? "grid gap-2 text-sm text-stone-300"
+                                  : "grid gap-2 text-sm text-slate-700"
+                              }
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span>Segment start</span>
+                                <span>
+                                  {track.segmentStartAt
+                                    ? new Date(
+                                        track.segmentStartAt,
+                                      ).toLocaleString()
+                                    : "n/a"}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span>Frames</span>
+                                <span>
+                                  {track.frameCount} @ {track.sampleFps} fps
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span>Embedding</span>
+                                <span>
+                                  {track.embeddingStatus}
+                                  {track.embeddingDim
+                                    ? ` • ${track.embeddingDim}d`
+                                    : ""}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span>Face</span>
+                                <span>
+                                  {track.faceStatus}
+                                  {track.faceDim ? ` • ${track.faceDim}d` : ""}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span>Closed</span>
+                                <span>{track.closedReason}</span>
+                              </div>
+                            </div>
+                          </Card>
 
-                    <Card className="space-y-3 border border-stone-700 bg-stone-950/50">
-                      <div>
-                        <CardTitle>Saved Movement Points</CardTitle>
-                        <CardDescription>
-                          First, middle, and last point anchors for this track.
-                        </CardDescription>
-                      </div>
-                      <div className="grid gap-2 text-xs text-stone-300">
-                        <div className="flex items-center justify-between gap-2">
-                          <span>First</span>
-                          <span>
-                            {track.firstPoint
-                              ? `${track.firstPoint.x}, ${track.firstPoint.y}`
-                              : "n/a"}
-                          </span>
+                          <Card
+                            className={
+                              isDarkTheme
+                                ? "space-y-3 border border-stone-700 bg-stone-950/50"
+                                : "space-y-3 border border-slate-300 bg-slate-100/70"
+                            }
+                          >
+                            <div>
+                              <CardTitle>Saved Movement Points</CardTitle>
+                              <CardDescription>
+                                First, middle, and last point anchors for this
+                                track.
+                              </CardDescription>
+                            </div>
+                            <div
+                              className={
+                                isDarkTheme
+                                  ? "grid gap-2 text-xs text-stone-300"
+                                  : "grid gap-2 text-xs text-slate-700"
+                              }
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span>First</span>
+                                <span>
+                                  {track.firstPoint
+                                    ? `${track.firstPoint.x}, ${track.firstPoint.y}`
+                                    : "n/a"}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span>Middle</span>
+                                <span>
+                                  {track.middlePoint
+                                    ? `${track.middlePoint.x}, ${track.middlePoint.y}`
+                                    : "n/a"}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span>Last</span>
+                                <span>
+                                  {track.lastPoint
+                                    ? `${track.lastPoint.x}, ${track.lastPoint.y}`
+                                    : "n/a"}
+                                </span>
+                              </div>
+                            </div>
+                          </Card>
                         </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Middle</span>
-                          <span>
-                            {track.middlePoint
-                              ? `${track.middlePoint.x}, ${track.middlePoint.y}`
-                              : "n/a"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Last</span>
-                          <span>
-                            {track.lastPoint
-                              ? `${track.lastPoint.x}, ${track.lastPoint.y}`
-                              : "n/a"}
-                          </span>
-                        </div>
-                      </div>
-                    </Card>
-                  </div>
                       </>
                     );
                   })()}

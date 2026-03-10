@@ -8,6 +8,7 @@ export interface OperatorOutletContext {
   selectedCameraIds: string[];
   liveGridSize: CameraGridSize;
   recentEvents: RealtimeEvent[];
+  themeMode: "polarized-dark" | "polarized-light";
   setSiteId: (siteId: string | undefined) => void;
   setSelectedCameraIds: (cameraIds: string[]) => void;
   toggleCameraSelection: (cameraId: string) => void;
