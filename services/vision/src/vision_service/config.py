@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     data_dir: str = "./data"
     database_path: str = "./data/vision.sqlite3"
     artifacts_dir: str = "./data/artifacts"
-    detector_model_name: str = "yolov8n.pt"
+    detector_model_name: str = "yolo26n.pt"
     detector_confidence_threshold: float = 0.35
     sample_fps: float = 2.0
     min_sample_fps: float = 1.0

@@ -85,6 +85,6 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 
 ## Model Assets
 
-- detector weight: `/app/yolov8n.pt`
+- detector weight: `/app/yolo26n.pt`
 - MobileCLIP cache: `/root/.cache/huggingface/hub/models--timm--MobileCLIP2-S0-OpenCLIP/.../open_clip_model.safetensors`
 - keep local backups outside Git; see [docs/model-assets.md](../../docs/model-assets.md)

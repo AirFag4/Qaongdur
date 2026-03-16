@@ -15,7 +15,7 @@ Near-term follow-up items after the current recorded-chunk vision slice.
 - Make `VisionSource.processedSegmentCount`, `latestProcessedAt`, and `lastSegmentAt` reflect live progress correctly.
 - Add a writable cleanup action for retired mock-source history instead of relying only on the env-backed purge toggle.
 - Measure first-query MobileCLIP warm-up latency now that initialization is lazy, and decide whether a background warm-up path is still worth adding.
-- Decide whether the detector runtime should also move to a startup-safe lazy path, since `yolov8n.pt` is still initialized during app construction.
+- Decide whether the detector runtime should also move to a startup-safe lazy path, since `yolo26n.pt` is still initialized during app construction.
 - Add a scripted local backup and restore workflow for detector, MobileCLIP, and face resource-pack weights outside Git.
 
 ## Throughput

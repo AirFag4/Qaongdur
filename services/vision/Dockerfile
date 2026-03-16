@@ -19,7 +19,7 @@ RUN python -m pip install --upgrade pip \
   && python -m pip install . \
   && python -m pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision \
   && python -m pip install 'ultralytics>=8.3.0' 'open-clip-torch>=2.30.0' \
-  && python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')" \
+  && python -c "from ultralytics import YOLO; YOLO('yolo26n.pt')" \
   && python -c "import open_clip; open_clip.create_model_and_transforms('MobileCLIP2-S0', pretrained='dfndr2b')"
 
 EXPOSE 8010
