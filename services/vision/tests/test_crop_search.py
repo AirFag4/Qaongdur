@@ -18,6 +18,9 @@ class _ArtifactStoreStub:
         del path
         return None
 
+    def data_url_for_bytes(self, payload: bytes, mime_type: str = "image/jpeg") -> str:
+        return f"data:{mime_type};base64,{base64.b64encode(payload).decode('ascii')}"
+
 
 class _ObjectEmbedderStub:
     def __init__(
@@ -54,9 +57,15 @@ class _FaceEmbedderStub:
         *,
         status: str = "service-not-ready",
         vector: list[float] | None = None,
+        detected_face_jpeg: bytes | None = None,
+        aligned_face_jpeg: bytes | None = None,
+        face_bbox: tuple[int, int, int, int] | None = None,
     ) -> None:
         self._status = status
         self._vector = vector
+        self._detected_face_jpeg = detected_face_jpeg
+        self._aligned_face_jpeg = aligned_face_jpeg
+        self._face_bbox = face_bbox
         self.calls = 0
 
     def embed_query_image(self, image_bgr: np.ndarray) -> FaceEmbeddingResult:
@@ -68,7 +77,32 @@ class _FaceEmbedderStub:
             vector=self._vector,
             detail=None,
             face_count=1 if self._vector else 0,
+            face_bbox=self._face_bbox,
+            detected_face_jpeg=self._detected_face_jpeg,
+            aligned_face_jpeg=self._aligned_face_jpeg,
         )
+
+
+class _VectorStoreStub:
+    def __init__(self, *, results: list[dict[str, object]] | None = None) -> None:
+        self._results = results
+        self.calls: list[dict[str, object]] = []
+
+    def search_embeddings(
+        self,
+        *,
+        embedding_kind: str,
+        vector: list[float],
+        track_ids: list[str],
+    ) -> list[dict[str, object]] | None:
+        self.calls.append(
+            {
+                "embedding_kind": embedding_kind,
+                "vector": vector,
+                "track_ids": track_ids,
+            }
+        )
+        return self._results
 
 
 def _service_with_repository(
@@ -76,13 +110,16 @@ def _service_with_repository(
     *,
     object_embedder: _ObjectEmbedderStub,
     face_embedder: _FaceEmbedderStub,
+    vector_store: _VectorStoreStub | None = None,
 ) -> VisionPipelineService:
     service = VisionPipelineService.__new__(VisionPipelineService)
     service._repository = repository
     service._artifact_store = _ArtifactStoreStub()
     service._embedder = object_embedder
     service._face_embedder = face_embedder
+    service._vector_store = vector_store or _VectorStoreStub()
     service._embedding_lock = Lock()
+    service._vector_store_lock = Lock()
     return service
 
 
@@ -155,6 +192,8 @@ def _insert_track(
             "face_status": "ready" if face_vector is not None else "skipped",
             "face_model": "test-face-model",
             "face_dim": len(face_vector) if face_vector is not None else None,
+            "face_count": 1 if face_vector is not None else 0,
+            "face_detail": None,
             "closed_reason": "completed",
             "created_at": last_seen_at,
         },
@@ -257,6 +296,7 @@ def test_image_search_prefers_face_embeddings_before_object_embeddings(tmp_path)
         repository,
         object_embedder=object_embedder,
         face_embedder=face_embedder,
+        vector_store=_VectorStoreStub(results=[{"trackId": "trk-person-face", "score": 1.0}]),
     )
 
     result = service.search_crop_tracks(image_base64=_image_data_url(), page=1, page_size=5)
@@ -309,9 +349,52 @@ def test_text_and_image_queries_merge_results_and_reasons(tmp_path) -> None:
 
     assert result["searchModes"] == ["image", "text"]
     assert result["totalCount"] == 2
-    assert result["tracks"][0]["id"] == "trk-person-combined"
-    assert result["tracks"][0]["searchReason"] == "image+text"
-    assert {track["id"] for track in result["tracks"]} == {
+    reasons_by_track_id = {
+        track["id"]: track["searchReason"] for track in result["tracks"]
+    }
+    assert reasons_by_track_id["trk-person-combined"] == "image+text"
+    assert set(reasons_by_track_id) == {
         "trk-person-combined",
         "trk-vehicle-image-only",
     }
+
+
+def test_image_search_returns_face_query_debug_payload(tmp_path) -> None:
+    repository = _build_repository(tmp_path)
+    _insert_track(
+        repository,
+        track_id="trk-person-face",
+        label="person",
+        detector_label="person",
+        first_seen_at="2026-03-10T15:01:00+00:00",
+        last_seen_at="2026-03-10T15:01:05+00:00",
+        face_vector=[1.0, 0.0, 0.0],
+    )
+
+    vector_store = _VectorStoreStub(
+        results=[{"trackId": "trk-person-face", "score": 0.98}]
+    )
+    service = _service_with_repository(
+        repository,
+        object_embedder=_ObjectEmbedderStub(),
+        face_embedder=_FaceEmbedderStub(
+            status="ready",
+            vector=[1.0, 0.0, 0.0],
+            detected_face_jpeg=b"detected",
+            aligned_face_jpeg=b"aligned",
+            face_bbox=(4, 8, 20, 24),
+        ),
+        vector_store=vector_store,
+    )
+
+    result = service.search_crop_tracks(image_base64=_image_data_url(), page=1, page_size=5)
+
+    assert result["imageQueryDebug"] == {
+        "faceStatus": "ready",
+        "faceCount": 1,
+        "detail": None,
+        "faceBBox": [4, 8, 20, 24],
+        "detectedFaceDataUrl": "data:image/jpeg;base64,ZGV0ZWN0ZWQ=",
+        "alignedFaceDataUrl": "data:image/jpeg;base64,YWxpZ25lZA==",
+    }
+    assert vector_store.calls[0]["track_ids"] == ["trk-person-face"]

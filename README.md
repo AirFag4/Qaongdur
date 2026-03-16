@@ -80,21 +80,22 @@ Current behavior in this mode:
 - tracks are sampled at `1-3 fps` per source, default `2 fps`
 - recorded chunks are queued newest-first, and worker count is configurable through `VISION_SEGMENT_WORKER_COUNT`
 - the `/crops` page now supports time-range search, 20-track pagination, and a closable investigation modal for first, middle, and last saved observations
-- the crop filter bar now accepts optional text and image queries in the same top form as camera and time filtering
-- image queries try face detection first and fall back to crop-image similarity when no searchable face is found
+- the crop filter bar now accepts optional text and image queries in the same top form as camera and time filtering, including drag-and-drop image upload for face/person search
+- image queries try face detection first, show the uploaded plus detected/aligned face previews in the web UI, and fall back to crop-image similarity when no searchable face is found
 - when both text and image are provided, the crop page merges both result sets into one ranked gallery
 - the crop list only loads the representative middle crop for each card; opening a track fetches the heavier first/middle/last crop set plus source-frame overlays on demand
+- the investigation modal now keeps the source-frame overlay locked to the true frame aspect ratio and shows detected/aligned face previews for qualifying person tracks
 - the investigation modal can pivot directly into the source live view or a playback query scoped to that track window
 - the crop page now accepts camera/time query-parameter pivots so Devices and future map/identity flows can land operators directly in a camera-scoped review window
 - the `/crops` page hides retired mock-source history by default and exposes an `Include retired history` toggle when you want older rows back
 - embeddings are computed from object crops only
 - the default local media budget is now shared: `10 GB` total, split `80%` for recordings/playback and `20%` for crop artifacts
 - the face stage only attempts one embedding per person track after the minimum dwell window
-- object and face embeddings are written into Qdrant collections for vector storage
+- object and face embeddings are written into Qdrant collections for vector storage, and crop image search now queries Qdrant across the active web-filter track window when it is available
 - face embeddings are delegated to a separate `face-api` sidecar that bootstraps InspireFace from the vendored `third_party/InspireFace` submodule and hydrates the `Megatron` resource pack into the persistent runtime volume
 - the first `face-api` startup compiles the vendored InspireFace runtime and downloads the `Megatron` pack inside the container, so it can take several minutes
-- the first `vision` startup after a clean rebuild can take longer than the earlier scaffold because detector and embedder runtimes are installed in the image
-- local low-spec mode can keep `VISION_EMBEDDING_ENABLED=false`; in that mode text search still works through track-metadata fallback, while image search still uses face-first matching plus crop-vector fallback
+- the first `vision` startup after a clean rebuild can take longer than the earlier scaffold because detector and embedder runtimes are installed in the image, but MobileCLIP now loads lazily on first semantic-search use instead of during API startup
+- local runtime can keep `VISION_EMBEDDING_ENABLED=true` again because MobileCLIP no longer initializes during app bind; if you explicitly set it to `false`, text search falls back to track-metadata ranking while image search still uses face-first matching plus crop-vector fallback
 - VLM is skipped in this slice
 
 Targeted mock-video publisher restart only:
@@ -248,7 +249,8 @@ Current limitations of this slice:
 - retired mock-source history remains in SQLite until it is explicitly purged, even though the crop page now hides it by default
 - default dev settings favor stability over scale: one mock source and one worker unless you raise `MOCK_VIDEO_MAX_SOURCES` or `VISION_SEGMENT_WORKER_COUNT`
 - the face sidecar can still time out under load even when it reports healthy at startup
-- on lower-spec machines, set `VISION_EMBEDDING_ENABLED=false` in local `.env` to keep the vision API responsive until startup-safe MobileCLIP initialization lands
+- MobileCLIP initialization is now deferred until the first image or text embedding request, and the default Docker image pre-caches the shipped `MobileCLIP2-S0` weights so the first semantic query does not also need to download them
+- if you still want metadata-only text search on a constrained machine, set `VISION_EMBEDDING_ENABLED=false` in local `.env`; the vision API will stay searchable by metadata and time while image search continues to use face-first matching plus crop-vector fallback
 
 ## For Developers
 

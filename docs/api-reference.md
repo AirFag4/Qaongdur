@@ -77,8 +77,8 @@ The frontend only talks to the data layer through this interface:
 | `getVisionStatus()` | none | `Promise<VisionPipelineStatus>` | returns detector, embedding, face-sidecar, vector-store, queue, and storage status | crop gallery page |
 | `runVisionMockJob(sourceIds?)` | optional source ids | `Promise<VisionJobStatus>` | requests an immediate recordings scan in backend mode | crop gallery page |
 | `listCropTracks(filter?)` | `CropTrackFilter` | `Promise<CropTrackPage>` | returns paginated crop-track cards with time-range filtering, optional retired-history inclusion, and only the representative middle crop for each row | crop gallery page |
-| `searchCropTracks(input)` | `CropTrackSearchInput` | `Promise<CropTrackPage>` | runs crop search with the same camera/time filters plus optional text and image queries; image queries try face-first matching before crop similarity | crop gallery page |
-| `getCropTrack(trackId)` | track id | `Promise<CropTrackDetail \| undefined>` | returns detailed movement, bbox, first/middle/last crop images, and source-frame overlays for one track | crop gallery page |
+| `searchCropTracks(input)` | `CropTrackSearchInput` | `Promise<CropTrackPage>` | runs crop search with the same camera/time filters plus optional text and image queries; image queries try face-first matching before crop similarity and can return face-debug previews for the uploaded query | crop gallery page |
+| `getCropTrack(trackId)` | track id | `Promise<CropTrackDetail \| undefined>` | returns detailed movement, bbox, first/middle/last crop images, source-frame overlays, and face-debug previews for one track | crop gallery page |
 | `getSystemSettings()` | none | `Promise<SystemSettings>` | returns the current auth, shared media-budget split, and env-backed runtime settings surface used by the Settings page | settings page |
 
 ### `RealtimeEventSocket`
@@ -312,7 +312,7 @@ All of the following types live in `packages/types/src/index.ts`.
 - `sampleMode: boolean`
 - `autoIngest?: boolean`
 - `detector: { available: boolean; modelName: string; detail: string }`
-- `embedding: { modelName: string }`
+- `embedding: { enabled?: boolean; state?: string; modelName: string; detail?: string }`
 - `face: { available: boolean; enabled: boolean; mode: string; modelName: string; detail: string }`
 - `vectorStore?: { enabled: boolean; available: boolean; provider: string; detail: string }`
 - `sourceSync?: { lastSyncedAt?: string | null; error?: string | null }`
@@ -350,6 +350,15 @@ All of the following types live in `packages/types/src/index.ts`.
 - `textQuery?: string`
 - `imageBase64?: string`
 
+### `CropImageQueryDebug`
+
+- `faceStatus: string`
+- `faceCount: number`
+- `detail?: string | null`
+- `faceBBox?: [number, number, number, number] | null`
+- `detectedFaceDataUrl?: string | null`
+- `alignedFaceDataUrl?: string | null`
+
 ### `CropTrack`
 
 - `id: string`
@@ -376,12 +385,42 @@ All of the following types live in `packages/types/src/index.ts`.
 - `embeddingModel?: string | null`
 - `faceStatus: string`
 - `faceModel?: string | null`
+- `faceDim?: number | null`
+- `faceCount?: number`
+- `faceDetail?: string | null`
 - `closedReason: string`
 - `searchScore?: number | null`
 - `searchReason?: string | null`
-- `firstCropDataUrl: string`
+- `firstCropDataUrl?: string`
 - `middleCropDataUrl: string`
+- `lastCropDataUrl?: string`
+
+### `CropTrackPage`
+
+- `tracks: CropTrack[]`
+- `totalCount: number`
+- `page: number`
+- `pageSize: number`
+- `totalPages: number`
+- `searchModes?: string[]`
+- `imageQueryDebug?: CropImageQueryDebug | null`
+
+### `CropTrackDetail`
+
+- all fields from `CropTrack`
+- `firstCropDataUrl: string`
 - `lastCropDataUrl: string`
+- `firstBBox?: [number, number, number, number]`
+- `middleBBox?: [number, number, number, number]`
+- `lastBBox?: [number, number, number, number]`
+- `sourceFrameWidth?: number | null`
+- `sourceFrameHeight?: number | null`
+- `firstFrameDataUrl?: string | null`
+- `middleFrameDataUrl?: string | null`
+- `lastFrameDataUrl?: string | null`
+- `faceDetectedDataUrl?: string | null`
+- `faceAlignedDataUrl?: string | null`
+- `createdAt?: string`
 
 ### Realtime event types
 

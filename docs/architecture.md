@@ -51,7 +51,8 @@ Current implemented slice:
 - the Devices page now has an inventory/map split, and the map mode renders geolocated cameras with MapLibre over open raster tiles
 - the `mock-streamer` service loops sibling mock videos into MediaMTX as system-managed RTSP cameras, defaulting to one active source on lower-spec dev machines
 - the `vision-cpu` profile processes those relay sources from finalized recording chunks, prioritizes newer chunks first, stores first/middle/last track crops, and exposes a crop gallery through `control-api`
-- the crop investigation surface already supports paginated track review, start/middle/end source-frame overlays, camera/time pivots, and multimodal crop search with face-first image matching
+- the crop investigation surface already supports paginated track review, start/middle/end source-frame overlays, camera/time pivots, drag-and-drop image queries, and multimodal crop search with face-first image matching
+- the crop modal now exposes detected-face and aligned-face previews per qualifying person track so operators can inspect what the face stage actually used
 - operator-facing playback and crop search windows now use a configurable timezone preference instead of a fixed UTC-style input flow
 - the optional `face-api` sidecar uses the vendored `third_party/InspireFace` submodule and hydrates the `Megatron` pack into its runtime volume for person-track face embeddings
 
@@ -65,8 +66,9 @@ Next planned slice:
 Current known limitation:
 
 - the relay path now supports per-camera RTSP transport selection, but some cameras still need a vendor-specific RTSP path or `rtspAnyPort` compatibility mode before they remain stable
-- track metadata stays in the local SQLite store for now, while object and face embeddings are pushed into Qdrant for vector storage
-- on lower-spec local runtime where `VISION_EMBEDDING_ENABLED=false`, crop text search currently falls back to track metadata ranking instead of true MobileCLIP text-to-image similarity
+- track metadata stays in the local SQLite store for now, while object and face embeddings are pushed into Qdrant and current crop-vector search queries Qdrant over the filtered track window
+- MobileCLIP now initializes lazily on the first semantic-search request instead of during vision-service startup, so default local runtime can leave `VISION_EMBEDDING_ENABLED=true`
+- when `VISION_EMBEDDING_ENABLED=false`, crop text search falls back to track metadata ranking instead of true MobileCLIP text-to-image similarity
 - the first `face-api` startup compiles InspireFace from source, so face status can remain unavailable for several minutes on a cold boot
 
 ## Task 03 Vision Data Shape

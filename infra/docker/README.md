@@ -114,8 +114,9 @@ Current limitation:
 
 - the first `face-api` startup compiles InspireFace from source and may download the `Megatron` model pack, so it can take several minutes before face status becomes available
 - clones that skipped `--recurse-submodules` must run `git submodule update --init --recursive` before building `vision` or `face-api`
-- if the vision API fails to bind during startup on a lower-spec machine, set `VISION_EMBEDDING_ENABLED=false` in local `.env` and restart `vision`
+- MobileCLIP now initializes lazily on the first semantic-search request instead of during API startup, and the vision image pre-caches the default `MobileCLIP2-S0` weights during build
 - the first `vision` startup after a rebuild is slower than the earlier scaffold because the image now includes packaged tracking, detector, and embedder dependencies
+- the first semantic crop search after a fresh `vision` start can still take longer because MobileCLIP is loaded on demand
 - runtime settings are still env-backed; the Settings page in the web app is a planning surface rather than a live-write control plane today
 - retired mock-track history remains in the SQLite store until it is explicitly purged, even though the crop page hides it by default
 - the default runtime is intentionally conservative at one mock source and one worker; raise `MOCK_VIDEO_MAX_SOURCES` or `VISION_SEGMENT_WORKER_COUNT` only if the machine can absorb it

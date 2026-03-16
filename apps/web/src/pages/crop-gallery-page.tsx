@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+} from "react";
 import {
   keepPreviousData,
   useMutation,
@@ -179,6 +186,10 @@ function TrackObservationViewer({
   const hasOverlay = Boolean(
     observation.frameSrc && bbox && frameWidth > 0 && frameHeight > 0,
   );
+  const frameAspectRatio =
+    frameWidth > 0 && frameHeight > 0
+      ? `${frameWidth} / ${frameHeight}`
+      : "16 / 9";
 
   const overlayStyle =
     hasOverlay && bbox
@@ -235,33 +246,35 @@ function TrackObservationViewer({
         <div
           className={
             isDarkTheme
-              ? "relative aspect-video overflow-hidden rounded-md border border-stone-700 bg-stone-950"
-              : "relative aspect-video overflow-hidden rounded-md border border-slate-300 bg-white"
+              ? "flex min-h-[240px] items-center justify-center overflow-hidden rounded-md border border-stone-700 bg-stone-950 p-2"
+              : "flex min-h-[240px] items-center justify-center overflow-hidden rounded-md border border-slate-300 bg-white p-2"
           }
         >
-          <img
-            src={observation.frameSrc ?? observation.cropSrc}
-            alt={`${track.cameraName} ${observationKey} observation`}
-            className="h-full w-full object-contain"
-            onLoad={(event) => {
-              setLoadedFrameSize({
-                width: event.currentTarget.naturalWidth,
-                height: event.currentTarget.naturalHeight,
-              });
-            }}
-          />
-          {overlayStyle ? (
-            <div
-              className="pointer-events-none absolute border-2 border-cyan-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.18)]"
-              style={overlayStyle}
-            >
-              <span className="absolute left-0 top-0 -translate-y-full rounded bg-cyan-500/90 px-2 py-1 text-[11px] font-medium text-stone-950">
-                {formatDateTimeInTimeZone(observation.happenedAt, operatorTimeZone, {
-                  includeSeconds: true,
-                })}
-              </span>
-            </div>
-          ) : null}
+          <div className="relative w-full" style={{ aspectRatio: frameAspectRatio }}>
+            <img
+              src={observation.frameSrc ?? observation.cropSrc}
+              alt={`${track.cameraName} ${observationKey} observation`}
+              className="block h-full w-full object-contain"
+              onLoad={(event) => {
+                setLoadedFrameSize({
+                  width: event.currentTarget.naturalWidth,
+                  height: event.currentTarget.naturalHeight,
+                });
+              }}
+            />
+            {overlayStyle ? (
+              <div
+                className="pointer-events-none absolute border-2 border-cyan-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.18)]"
+                style={overlayStyle}
+              >
+                <span className="absolute left-0 top-0 -translate-y-full rounded bg-cyan-500/90 px-2 py-1 text-[11px] font-medium text-stone-950">
+                  {formatDateTimeInTimeZone(observation.happenedAt, operatorTimeZone, {
+                    includeSeconds: true,
+                  })}
+                </span>
+              </div>
+            ) : null}
+          </div>
         </div>
         {!observation.frameSrc ? (
           <p className="text-xs text-amber-300">
@@ -315,6 +328,70 @@ function TrackObservationViewer({
   );
 }
 
+function FacePreviewCard({
+  title,
+  description,
+  imageSrc,
+  isDarkTheme,
+}: {
+  title: string;
+  description: string;
+  imageSrc?: string | null;
+  isDarkTheme: boolean;
+}) {
+  return (
+    <div
+      className={
+        isDarkTheme
+          ? "space-y-2 rounded-md border border-stone-700 bg-stone-950/60 p-3"
+          : "space-y-2 rounded-md border border-slate-300 bg-slate-100/70 p-3"
+      }
+    >
+      <div>
+        <p
+          className={
+            isDarkTheme
+              ? "text-sm font-medium text-stone-100"
+              : "text-sm font-medium text-slate-900"
+          }
+        >
+          {title}
+        </p>
+        <p
+          className={
+            isDarkTheme ? "text-xs text-stone-400" : "text-xs text-slate-500"
+          }
+        >
+          {description}
+        </p>
+      </div>
+      <div
+        className={
+          isDarkTheme
+            ? "flex aspect-square items-center justify-center overflow-hidden rounded-md border border-stone-700 bg-stone-950"
+            : "flex aspect-square items-center justify-center overflow-hidden rounded-md border border-slate-300 bg-white"
+        }
+      >
+        {imageSrc ? (
+          <img
+            src={imageSrc}
+            alt={title}
+            className="h-full w-full object-contain"
+          />
+        ) : (
+          <span
+            className={
+              isDarkTheme ? "text-xs text-stone-500" : "text-xs text-slate-500"
+            }
+          >
+            Not available
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function CropGalleryPage() {
   const queryClient = useQueryClient();
   const { themeMode, operatorTimeZone } = useOperatorOutlet();
@@ -344,8 +421,10 @@ export function CropGalleryPage() {
   const [textQuery, setTextQuery] = useState("");
   const [imageQueryName, setImageQueryName] = useState("");
   const [imageQueryDataUrl, setImageQueryDataUrl] = useState("");
+  const [isImageDragActive, setIsImageDragActive] = useState(false);
   const [includeRetired, setIncludeRetired] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [appliedFilter, setAppliedFilter] = useState<CropTrackFilter>(() =>
       buildFilter({
       cameraId: initialCameraId,
@@ -361,15 +440,40 @@ export function CropGalleryPage() {
   const [selectedObservation, setSelectedObservation] =
     useState<ObservationKey>("middle");
 
+  const clearImageQuery = () => {
+    setImageQueryName("");
+    setImageQueryDataUrl("");
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  };
+
+  const applyImageFile = async (file?: File) => {
+    if (!file) {
+      clearImageQuery();
+      return;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setImageQueryName(file.name);
+      setImageQueryDataUrl(dataUrl);
+    } catch {
+      clearImageQuery();
+    }
+  };
+
   const status = useQuery({
     queryKey: queryKeys.visionStatus,
     queryFn: () => apiClient.getVisionStatus(),
     refetchInterval: 10_000,
   });
+  const embeddingState = status.data?.embedding.state;
   const textSearchHint =
-    status.data?.embedding.modelName === "histogram-fallback"
+    embeddingState === "disabled" || embeddingState === "fallback"
       ? "Text currently falls back to metadata ranking on this runtime; image search still runs face-first."
-      : "Text uses text-to-image similarity; text + image searches are merged.";
+      : embeddingState === "pending" || embeddingState === "initializing"
+        ? "Text search will initialize MobileCLIP on first use; the first semantic query can take longer."
+        : "Text uses text-to-image similarity; text + image searches are merged.";
 
   const sources = useQuery({
     queryKey: queryKeys.visionSources,
@@ -474,8 +578,7 @@ export function CropGalleryPage() {
     setFromAt(nextRange.fromAt);
     setToAt(nextRange.toAt);
     setTextQuery("");
-    setImageQueryName("");
-    setImageQueryDataUrl("");
+    clearImageQuery();
     setIncludeRetired(false);
     setCurrentPage(1);
     setAppliedFilter(
@@ -494,20 +597,13 @@ export function CropGalleryPage() {
   const handleImageSelection = async (
     event: ChangeEvent<HTMLInputElement>,
   ) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      setImageQueryName("");
-      setImageQueryDataUrl("");
-      return;
-    }
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setImageQueryName(file.name);
-      setImageQueryDataUrl(dataUrl);
-    } catch {
-      setImageQueryName("");
-      setImageQueryDataUrl("");
-    }
+    await applyImageFile(event.target.files?.[0]);
+  };
+
+  const handleImageDrop = async (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setIsImageDragActive(false);
+    await applyImageFile(event.dataTransfer.files?.[0]);
   };
 
   return (
@@ -567,22 +663,57 @@ export function CropGalleryPage() {
         </FilterField>
         <FilterField label="Image Search">
           <div className="space-y-2">
-            <input
-              type="file"
-              accept="image/*"
-              className="form-input"
-              onChange={(event) => void handleImageSelection(event)}
-            />
+            <label
+              className={
+                isImageDragActive
+                  ? "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-cyan-500 bg-cyan-500/10 px-4 py-4 text-center"
+                  : "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-[var(--qa-panel-border)] bg-[var(--qa-panel-muted)]/40 px-4 py-4 text-center"
+              }
+              onDragOver={(event) => {
+                event.preventDefault();
+                setIsImageDragActive(true);
+              }}
+              onDragLeave={() => setIsImageDragActive(false)}
+              onDrop={(event) => void handleImageDrop(event)}
+            >
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => void handleImageSelection(event)}
+              />
+              {imageQueryDataUrl ? (
+                <div className="space-y-2">
+                  <div className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-md border border-[var(--qa-panel-border)] bg-[var(--qa-panel-bg)]">
+                    <img
+                      src={imageQueryDataUrl}
+                      alt={imageQueryName || "Selected image query"}
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
+                  <p className="text-xs text-[var(--qa-panel-text-subtle)]">
+                    Click or drop another image to replace it.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-[var(--qa-panel-text)]">
+                    Drag a face or person image here
+                  </p>
+                  <p className="text-xs text-[var(--qa-panel-text-subtle)]">
+                    Or click to upload an image for face-first search.
+                  </p>
+                </>
+              )}
+            </label>
             {imageQueryName ? (
               <div className="flex items-center gap-2 text-xs text-[var(--qa-panel-text-subtle)]">
                 <span className="truncate">{imageQueryName}</span>
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => {
-                    setImageQueryName("");
-                    setImageQueryDataUrl("");
-                  }}
+                  onClick={clearImageQuery}
                 >
                   Clear
                 </Button>
@@ -626,6 +757,53 @@ export function CropGalleryPage() {
           Include retired history
         </label>
       </FilterBar>
+
+      {appliedSearch.imageBase64 ? (
+        <Card className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle>Image Query Review</CardTitle>
+              <CardDescription>
+                Uploaded image, detected face crop, and aligned face preview for
+                the current search.
+              </CardDescription>
+            </div>
+            {tracks.data?.imageQueryDebug ? (
+              <div className="theme-panel-caption text-right text-xs">
+                <p>Face status: {tracks.data.imageQueryDebug.faceStatus}</p>
+                <p>Faces found: {tracks.data.imageQueryDebug.faceCount}</p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <FacePreviewCard
+              title="Uploaded Query"
+              description="The image currently driving the search request."
+              imageSrc={appliedSearch.imageBase64}
+              isDarkTheme={isDarkTheme}
+            />
+            <FacePreviewCard
+              title="Detected Face"
+              description="The padded face crop selected for face search."
+              imageSrc={tracks.data?.imageQueryDebug?.detectedFaceDataUrl}
+              isDarkTheme={isDarkTheme}
+            />
+            <FacePreviewCard
+              title="Aligned Face"
+              description="Face alignment preview before embedding extraction."
+              imageSrc={tracks.data?.imageQueryDebug?.alignedFaceDataUrl}
+              isDarkTheme={isDarkTheme}
+            />
+          </div>
+
+          {tracks.data?.imageQueryDebug?.detail ? (
+            <p className="theme-panel-caption text-xs">
+              {tracks.data.imageQueryDebug.detail}
+            </p>
+          ) : null}
+        </Card>
+      ) : null}
 
       <div className="grid gap-3">
         <Card className="space-y-3">
@@ -1016,6 +1194,18 @@ export function CropGalleryPage() {
                                 </span>
                               </div>
                               <div className="flex items-center justify-between gap-2">
+                                <span>Faces found</span>
+                                <span>{track.faceCount ?? 0}</span>
+                              </div>
+                              {track.faceDetail ? (
+                                <div className="flex items-start justify-between gap-3">
+                                  <span>Face detail</span>
+                                  <span className="max-w-[220px] text-right">
+                                    {track.faceDetail}
+                                  </span>
+                                </div>
+                              ) : null}
+                              <div className="flex items-center justify-between gap-2">
                                 <span>Closed</span>
                                 <span>{track.closedReason}</span>
                               </div>
@@ -1070,6 +1260,36 @@ export function CropGalleryPage() {
                             </div>
                           </Card>
                         </div>
+
+                        <Card
+                          className={
+                            isDarkTheme
+                              ? "space-y-3 border border-stone-700 bg-stone-950/50"
+                              : "space-y-3 border border-slate-300 bg-slate-100/70"
+                          }
+                        >
+                          <div>
+                            <CardTitle>Face Review</CardTitle>
+                            <CardDescription>
+                              Face crop and alignment preview from the middle
+                              observation used for face search.
+                            </CardDescription>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <FacePreviewCard
+                              title="Detected Face"
+                              description="Padded face crop kept at a stable aspect when room is available."
+                              imageSrc={track.faceDetectedDataUrl}
+                              isDarkTheme={isDarkTheme}
+                            />
+                            <FacePreviewCard
+                              title="Aligned Face"
+                              description="Alignment preview right before feature extraction."
+                              imageSrc={track.faceAlignedDataUrl}
+                              isDarkTheme={isDarkTheme}
+                            />
+                          </div>
+                        </Card>
                       </>
                     );
                   })()}

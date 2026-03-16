@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib
 import logging
+from threading import Lock
 
 import cv2
 import numpy as np
@@ -23,33 +25,25 @@ class CropEmbedder:
         self._model = None
         self._preprocess = None
         self._tokenizer = None
-        self.runtime_model_name = "histogram-fallback"
-
-        if not enabled:
-            return
-
-        try:
-            import open_clip
-            import torch
-            from PIL import Image
-
-            self._Image = Image
-            torch.set_num_threads(1)
-            model, _, preprocess = open_clip.create_model_and_transforms(
-                model_name,
-                pretrained="dfndr2b",
-            )
-            model.eval()
-            self._model = model
-            self._preprocess = preprocess
-            self._tokenizer = open_clip.get_tokenizer(model_name)
-            self._torch = torch
-            self.runtime_model_name = model_name
-        except Exception as error:  # pragma: no cover - runtime dependency branch
-            LOGGER.warning("Falling back to histogram embedder: %s", error)
+        self._torch = None
+        self._Image = None
+        self._init_lock = Lock()
+        self.runtime_model_name = model_name if enabled else "histogram-fallback"
+        self.runtime_state = "pending" if enabled else "disabled"
+        self.runtime_detail = (
+            f"{model_name} will initialize on first embedding request."
+            if enabled
+            else "Embedding stage disabled by configuration."
+        )
 
     def embed(self, crop_bgr: np.ndarray) -> EmbeddingResult:
-        if self._model is None or self._preprocess is None:
+        if (
+            not self._ensure_runtime()
+            or self._model is None
+            or self._preprocess is None
+            or self._Image is None
+            or self._torch is None
+        ):
             histogram = self._histogram_embedding(crop_bgr)
             return EmbeddingResult(
                 status="fallback",
@@ -78,7 +72,12 @@ class CropEmbedder:
                 model_name=self.runtime_model_name,
                 vector=[],
             )
-        if self._model is None or self._tokenizer is None:
+        if (
+            not self._ensure_runtime()
+            or self._model is None
+            or self._tokenizer is None
+            or self._torch is None
+        ):
             return EmbeddingResult(
                 status="text-unsupported",
                 model_name=self.runtime_model_name,
@@ -95,6 +94,69 @@ class CropEmbedder:
             model_name=self.runtime_model_name,
             vector=vector,
         )
+
+    def _ensure_runtime(self) -> bool:
+        if not self._enabled:
+            self.runtime_model_name = "histogram-fallback"
+            self.runtime_state = "disabled"
+            self.runtime_detail = "Embedding stage disabled by configuration."
+            return False
+        if (
+            self._model is not None
+            and self._preprocess is not None
+            and self._tokenizer is not None
+            and self._Image is not None
+            and self._torch is not None
+        ):
+            return True
+        if self.runtime_state == "fallback":
+            return False
+
+        with self._init_lock:
+            if (
+                self._model is not None
+                and self._preprocess is not None
+                and self._tokenizer is not None
+                and self._Image is not None
+                and self._torch is not None
+            ):
+                return True
+            if self.runtime_state == "fallback":
+                return False
+
+            self.runtime_state = "initializing"
+            self.runtime_detail = f"Loading {self._model_name} on first embedding request."
+            try:
+                open_clip = importlib.import_module("open_clip")
+                torch = importlib.import_module("torch")
+                image_module = importlib.import_module("PIL.Image")
+
+                torch.set_num_threads(1)
+                model, _, preprocess = open_clip.create_model_and_transforms(
+                    self._model_name,
+                    pretrained="dfndr2b",
+                )
+                model.eval()
+                self._model = model
+                self._preprocess = preprocess
+                self._tokenizer = open_clip.get_tokenizer(self._model_name)
+                self._torch = torch
+                self._Image = image_module
+                self.runtime_model_name = self._model_name
+                self.runtime_state = "ready"
+                self.runtime_detail = f"{self._model_name} ready for image and text embeddings."
+                return True
+            except Exception as error:  # pragma: no cover - runtime dependency branch
+                LOGGER.warning("Falling back to histogram embedder: %s", error)
+                self._model = None
+                self._preprocess = None
+                self._tokenizer = None
+                self._torch = None
+                self._Image = None
+                self.runtime_model_name = "histogram-fallback"
+                self.runtime_state = "fallback"
+                self.runtime_detail = f"Histogram fallback active: {error}"
+                return False
 
     def _histogram_embedding(self, crop_bgr: np.ndarray) -> list[float]:
         resized = cv2.resize(crop_bgr, (32, 32), interpolation=cv2.INTER_AREA)

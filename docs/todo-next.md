@@ -13,7 +13,8 @@ Near-term follow-up items after the current recorded-chunk vision slice.
 - Add a retry or backfill path for any segments processed while vector storage was degraded before the 512-dimensional fallback alignment.
 - Make `VisionSource.processedSegmentCount`, `latestProcessedAt`, and `lastSegmentAt` reflect live progress correctly.
 - Add a writable cleanup action for retired mock-source history instead of relying only on the env-backed purge toggle.
-- Make MobileCLIP startup reliable enough on this machine that `VISION_EMBEDDING_ENABLED=true` is practical again instead of relying on `text-fallback`.
+- Measure first-query MobileCLIP warm-up latency now that initialization is lazy, and decide whether a background warm-up path is still worth adding.
+- Decide whether the detector runtime should also move to a startup-safe lazy path, since `yolov8n.pt` is still initialized during app construction.
 
 ## Throughput
 
@@ -27,7 +28,7 @@ Near-term follow-up items after the current recorded-chunk vision slice.
 
 - Move camera persistence from `/data/cameras.json` into Postgres with migrations.
 - Move playback segment indexing and retention metadata into Postgres instead of relying only on MediaMTX listing.
-- Harden Qdrant as the single vector store for object and face search, and decide later only whether its metadata mirrors should stay in SQLite or move fully into Postgres.
+- Complete the Qdrant-first search migration beyond the current filtered-track query path, including backfill/repair tooling for older rows and a decision on whether metadata mirrors should stay in SQLite or move fully into Postgres.
 - Decide when retired track history should age out automatically versus staying queryable indefinitely.
 
 ## UX
@@ -41,7 +42,7 @@ Near-term follow-up items after the current recorded-chunk vision slice.
 ## Vision Feature Follow-Ups
 
 - Add ROI definition and filtering to the persisted schema and processing loop.
-- Harden text, image, and face search for real MobileCLIP runtime instead of only low-spec fallback mode.
-- Improve face handling so successful face vectors, failures, and multi-face outcomes are visible per track.
+- Harden text, image, and face search for loaded MobileCLIP runtime and make the first-query warm-up path more observable in the UI.
+- Extend the new face-debug previews with operator actions, retry/backfill flows, and clearer failure states when the face sidecar is degraded.
 - Add identity lists, subject review, and face-match audit actions on top of the current face-first search path.
 - Keep VLM disabled until the recorded-chunk path, vector storage, and face reliability are stable.

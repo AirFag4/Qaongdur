@@ -191,7 +191,10 @@ class VisionPipelineService:
                 "detail": self._detector.status.detail,
             },
             "embedding": {
+                "enabled": self._settings.embedding_enabled,
+                "state": self._embedder.runtime_state,
                 "modelName": self._embedder.runtime_model_name,
+                "detail": self._embedder.runtime_detail,
             },
             "face": {
                 "available": self._face_embedder.runtime_available,
@@ -283,9 +286,11 @@ class VisionPipelineService:
 
         ranked_matches: list[dict[str, object]] = []
         executed_search_modes: list[str] = []
+        image_query_debug: dict[str, object] | None = None
         if normalized_image:
             image_bgr = self._decode_query_image(normalized_image)
             face_result = self._face_embedder.embed_query_image(image_bgr)
+            image_query_debug = self._serialize_image_query_debug(face_result)
             if face_result.status == "ready" and face_result.vector:
                 executed_search_modes.append("face-image")
                 ranked_matches.extend(
@@ -367,15 +372,17 @@ class VisionPipelineService:
             [str(match["trackId"]) for match in selected_matches]
         )
         match_by_id = {str(match["trackId"]): match for match in selected_matches}
+        track_by_id = {str(track["id"]): track for track in tracks}
         serialized = [
             self._serialize_track(
                 {
-                    **track,
-                    "search_score": match_by_id[str(track["id"])]["score"],
-                    "search_reason": match_by_id[str(track["id"])]["reason"],
+                    **track_by_id[track_id],
+                    "search_score": match_by_id[track_id]["score"],
+                    "search_reason": match_by_id[track_id]["reason"],
                 }
             )
-            for track in tracks
+            for track_id in [str(match["trackId"]) for match in selected_matches]
+            if track_id in track_by_id
         ]
         return {
             "tracks": serialized,
@@ -384,6 +391,7 @@ class VisionPipelineService:
             "pageSize": page_size,
             "totalPages": total_pages,
             "searchModes": executed_search_modes,
+            "imageQueryDebug": image_query_debug,
         }
 
     def start_job(self, *, source_ids: list[str] | None = None) -> dict[str, object]:
@@ -443,6 +451,8 @@ class VisionPipelineService:
             "faceStatus": track["face_status"],
             "faceModel": track["face_model"],
             "faceDim": track.get("face_dim") or track.get("face_vector_dim"),
+            "faceCount": track.get("face_count") or 0,
+            "faceDetail": track.get("face_detail"),
             "closedReason": track["closed_reason"],
             "firstPoint": json.loads(track["first_point_json"]) if track.get("first_point_json") else None,
             "middlePoint": json.loads(track["middle_point_json"]) if track.get("middle_point_json") else None,
@@ -476,6 +486,16 @@ class VisionPipelineService:
                         if assets.get("frame-last")
                         else None
                     ),
+                    "faceDetectedDataUrl": (
+                        self._artifact_store.read_as_data_url(assets["face-detected"])
+                        if assets.get("face-detected")
+                        else None
+                    ),
+                    "faceAlignedDataUrl": (
+                        self._artifact_store.read_as_data_url(assets["face-aligned"])
+                        if assets.get("face-aligned")
+                        else None
+                    ),
                     "createdAt": track["created_at"],
                 }
             )
@@ -496,6 +516,27 @@ class VisionPipelineService:
             raise ValueError("Unable to decode the uploaded image.")
         return image_bgr
 
+    def _serialize_image_query_debug(
+        self,
+        result: FaceEmbeddingResult,
+    ) -> dict[str, object]:
+        return {
+            "faceStatus": result.status,
+            "faceCount": result.face_count,
+            "detail": result.detail,
+            "faceBBox": list(result.face_bbox) if result.face_bbox else None,
+            "detectedFaceDataUrl": (
+                self._artifact_store.data_url_for_bytes(result.detected_face_jpeg)
+                if result.detected_face_jpeg
+                else None
+            ),
+            "alignedFaceDataUrl": (
+                self._artifact_store.data_url_for_bytes(result.aligned_face_jpeg)
+                if result.aligned_face_jpeg
+                else None
+            ),
+        }
+
     def _search_tracks_by_vector(
         self,
         *,
@@ -515,6 +556,43 @@ class VisionPipelineService:
         if query_norm <= 0:
             return []
         query = query / query_norm
+
+        candidate_rows = self._repository.list_crop_track_candidates(
+            source_id=source_id,
+            camera_id=camera_id,
+            label=label,
+            from_at=from_at,
+            to_at=to_at,
+            include_retired=include_retired,
+        )
+        if not candidate_rows:
+            return []
+
+        last_seen_by_track_id = {
+            str(candidate["id"]): str(candidate["last_seen_at"])
+            for candidate in candidate_rows
+        }
+        with self._vector_store_lock:
+            ranked_from_vector_store = self._vector_store.search_embeddings(
+                embedding_kind=embedding_kind,
+                vector=query.astype(float).tolist(),
+                track_ids=list(last_seen_by_track_id),
+            )
+        if ranked_from_vector_store is not None:
+            return [
+                {
+                    "trackId": str(match["trackId"]),
+                    "score": float(match["score"]),
+                    "reason": reason,
+                    "reasonCount": 1,
+                    "lastSeenAt": last_seen_by_track_id.get(
+                        str(match["trackId"]),
+                        "",
+                    ),
+                }
+                for match in ranked_from_vector_store
+                if str(match["trackId"]) in last_seen_by_track_id
+            ]
 
         candidates = self._repository.search_vector_candidates(
             embedding_kind=embedding_kind,
@@ -548,12 +626,14 @@ class VisionPipelineService:
                     "trackId": str(candidate["id"]),
                     "score": round(similarity, 6),
                     "reason": reason,
+                    "reasonCount": 1,
                     "lastSeenAt": str(candidate["last_seen_at"]),
                 }
             )
         ranked.sort(
             key=lambda item: (
                 float(item["score"]),
+                int(item.get("reasonCount", 1)),
                 str(item["lastSeenAt"]),
             ),
             reverse=True,
@@ -573,6 +653,7 @@ class VisionPipelineService:
                 existing_reasons = set(str(existing["reason"]).split("+"))
                 existing_reasons.add(str(match["reason"]))
                 existing["reason"] = "+".join(sorted(existing_reasons))
+                existing["reasonCount"] = len(existing_reasons)
                 existing["score"] = max(float(existing["score"]), float(match["score"]))
                 existing["lastSeenAt"] = max(
                     str(existing["lastSeenAt"]),
@@ -580,11 +661,14 @@ class VisionPipelineService:
                 )
                 continue
             seen[track_id] = len(merged)
-            merged.append(dict(match))
+            entry = dict(match)
+            entry["reasonCount"] = int(entry.get("reasonCount", 1))
+            merged.append(entry)
 
         merged.sort(
             key=lambda item: (
                 float(item["score"]),
+                int(item.get("reasonCount", 1)),
                 str(item["lastSeenAt"]),
             ),
             reverse=True,
@@ -644,12 +728,14 @@ class VisionPipelineService:
                     "trackId": str(candidate["id"]),
                     "score": round(float(score), 6),
                     "reason": "text-fallback",
+                    "reasonCount": 1,
                     "lastSeenAt": str(candidate["last_seen_at"]),
                 }
             )
         ranked.sort(
             key=lambda item: (
                 float(item["score"]),
+                int(item.get("reasonCount", 1)),
                 str(item["lastSeenAt"]),
             ),
             reverse=True,
@@ -922,6 +1008,14 @@ class VisionPipelineService:
         first_observation = track.first_observation()
         middle_observation = track.middle_observation()
         last_observation = track.last_observation()
+        with self._embedding_lock:
+            embedding = self._embedder.embed(middle_observation.crop_bgr)
+        face_embedding = self._face_embedder.maybe_embed(
+            label=track.label,
+            duration_seconds=track.duration_seconds,
+            crop_bgr=middle_observation.crop_bgr,
+        )
+
         crop_payloads = {
             "first": self._artifact_store.encode_crop(first_observation.crop_bgr),
             "middle": self._artifact_store.encode_crop(middle_observation.crop_bgr),
@@ -935,8 +1029,18 @@ class VisionPipelineService:
                 "frame-last": last_observation,
             },
         )
-        required_bytes = sum(len(payload) for payload in crop_payloads.values()) + sum(
-            len(payload) for payload in frame_payloads.values()
+        face_payloads = {
+            role: payload
+            for role, payload in {
+                "face-detected": face_embedding.detected_face_jpeg,
+                "face-aligned": face_embedding.aligned_face_jpeg,
+            }.items()
+            if payload
+        }
+        required_bytes = (
+            sum(len(payload) for payload in crop_payloads.values())
+            + sum(len(payload) for payload in frame_payloads.values())
+            + sum(len(payload) for payload in face_payloads.values())
         )
         deleted_paths = self._repository.prune_oldest_tracks_until_fit(
             storage_limit_bytes=self._settings.effective_storage_limit_bytes,
@@ -946,7 +1050,7 @@ class VisionPipelineService:
             self._artifact_store.delete_relative_path(relative_path)
 
         artifacts: list[dict[str, object]] = []
-        for role, payload in {**crop_payloads, **frame_payloads}.items():
+        for role, payload in {**crop_payloads, **frame_payloads, **face_payloads}.items():
             relative_path = self._artifact_store.write_bytes(
                 f"tracks/{track.id}/{role}.jpg",
                 payload,
@@ -957,21 +1061,19 @@ class VisionPipelineService:
                     "track_id": track.id,
                     "source_id": track.source.id,
                     "role": role,
-                    "kind": "frame" if role.startswith("frame-") else "crop",
+                    "kind": (
+                        "frame"
+                        if role.startswith("frame-")
+                        else "face"
+                        if role.startswith("face-")
+                        else "crop"
+                    ),
                     "relative_path": relative_path,
                     "mime_type": "image/jpeg",
                     "byte_size": len(payload),
                     "created_at": utcnow_iso(),
                 }
             )
-
-        with self._embedding_lock:
-            embedding = self._embedder.embed(middle_observation.crop_bgr)
-        face_embedding = self._face_embedder.maybe_embed(
-            label=track.label,
-            duration_seconds=track.duration_seconds,
-            crop_bgr=middle_observation.crop_bgr,
-        )
 
         self._repository.insert_track(
             track_row={
@@ -1008,6 +1110,8 @@ class VisionPipelineService:
                 "face_status": face_embedding.status,
                 "face_model": face_embedding.model_name,
                 "face_dim": len(face_embedding.vector) if face_embedding.vector else None,
+                "face_count": face_embedding.face_count,
+                "face_detail": face_embedding.detail,
                 "closed_reason": track.closed_reason,
                 "created_at": track.created_at,
             },
@@ -1030,11 +1134,12 @@ class VisionPipelineService:
                 if face_embedding.status == "ready"
                 else None
             ),
-                )
+        )
 
         with self._vector_store_lock:
             self._vector_store.upsert_object_embedding(
                 track_id=track.id,
+                source_id=track.source.id,
                 camera_id=track.source.camera_id,
                 label=track.label,
                 captured_at=middle_observation.captured_at,
@@ -1043,7 +1148,9 @@ class VisionPipelineService:
             if face_embedding.status == "ready" and face_embedding.vector:
                 self._vector_store.upsert_face_embedding(
                     track_id=track.id,
+                    source_id=track.source.id,
                     camera_id=track.source.camera_id,
+                    label=track.label,
                     captured_at=middle_observation.captured_at,
                     vector=face_embedding.vector,
                 )

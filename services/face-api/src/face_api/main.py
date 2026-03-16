@@ -18,6 +18,15 @@ class FaceEmbedRequest(BaseModel):
     imageBase64: str
 
 
+def _encode_jpeg_base64(image_bgr: np.ndarray | None) -> str | None:
+    if image_bgr is None:
+        return None
+    ok, encoded = cv2.imencode(".jpg", image_bgr)
+    if not ok:
+        return None
+    return base64.b64encode(encoded.tobytes()).decode("ascii")
+
+
 @lru_cache(maxsize=1)
 def get_runtime() -> FaceRuntime:
     return FaceRuntime(get_settings())
@@ -76,6 +85,9 @@ def create_app() -> FastAPI:
             "vector": response.vector,
             "detail": response.detail,
             "faceCount": response.face_count,
+            "faceBox": response.face_bbox,
+            "detectedFaceImageBase64": _encode_jpeg_base64(response.detected_face_bgr),
+            "alignedFaceImageBase64": _encode_jpeg_base64(response.aligned_face_bgr),
         }
 
     return app

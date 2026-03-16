@@ -5,11 +5,23 @@ import logging
 from pathlib import Path
 from threading import Lock
 
+import cv2
 import numpy as np
 
 from .config import Settings
 
 LOGGER = logging.getLogger(__name__)
+ARCFACE_TEMPLATE = np.asarray(
+    [
+        [38.2946, 51.6963],
+        [73.5318, 51.5014],
+        [56.0252, 71.7366],
+        [41.5493, 92.3655],
+        [70.7299, 92.2041],
+    ],
+    dtype=np.float32,
+)
+ALIGNED_FACE_SIZE = (112, 112)
 
 
 @dataclass(slots=True)
@@ -27,6 +39,9 @@ class FaceEmbeddingResponse:
     vector: list[float] | None
     detail: str
     face_count: int
+    face_bbox: tuple[int, int, int, int] | None = None
+    detected_face_bgr: np.ndarray | None = None
+    aligned_face_bgr: np.ndarray | None = None
 
 
 class FaceRuntime:
@@ -77,13 +92,26 @@ class FaceRuntime:
                     detail="No face was detected inside the provided crop.",
                     face_count=0,
                 )
-            feature = self._session.face_feature_extract(image_bgr, faces[0])
+            selected_face = self._select_primary_face(faces)
+            face_bbox = tuple(int(value) for value in selected_face.location)
+            detected_face_bgr = self._extract_padded_face(image_bgr, face_bbox)
+            aligned_face_bgr = self._align_face(image_bgr, selected_face)
+            feature = self._session.face_feature_extract(image_bgr, selected_face)
+            detail = "Face embedding generated from the selected face."
+            if len(faces) > 1:
+                detail = (
+                    "Face embedding generated from the strongest detected face "
+                    f"out of {len(faces)} faces."
+                )
             return FaceEmbeddingResponse(
                 status="ready",
                 model_name=self._settings.model_name,
                 vector=np.asarray(feature, dtype=float).tolist(),
-                detail="Face embedding generated from the crop.",
+                detail=detail,
                 face_count=len(faces),
+                face_bbox=face_bbox,
+                detected_face_bgr=detected_face_bgr,
+                aligned_face_bgr=aligned_face_bgr,
             )
         except Exception as error:  # pragma: no cover - runtime dependency branch
             LOGGER.warning("Face embedding failed: %s", error)
@@ -139,3 +167,75 @@ class FaceRuntime:
             return None
         text = path.read_text(encoding="utf-8").strip()
         return text or None
+
+    def _select_primary_face(self, faces: list[object]) -> object:
+        def face_score(face: object) -> tuple[float, float]:
+            x1, y1, x2, y2 = getattr(face, "location")
+            area = float(max(x2 - x1, 1) * max(y2 - y1, 1))
+            confidence = float(getattr(face, "detection_confidence", 0.0))
+            return (area, confidence)
+
+        return max(faces, key=face_score)
+
+    def _extract_padded_face(
+        self,
+        image_bgr: np.ndarray,
+        face_bbox: tuple[int, int, int, int],
+    ) -> np.ndarray:
+        image_height, image_width = image_bgr.shape[:2]
+        x1, y1, x2, y2 = face_bbox
+        bbox_width = max(x2 - x1, 1)
+        bbox_height = max(y2 - y1, 1)
+        side = int(round(max(bbox_width, bbox_height) * 1.6))
+        side = max(side, max(bbox_width, bbox_height))
+        center_x = (x1 + x2) / 2.0
+        center_y = (y1 + y2) / 2.0
+        crop_x1 = int(round(center_x - side / 2.0))
+        crop_y1 = int(round(center_y - side / 2.0))
+        crop_x2 = crop_x1 + side
+        crop_y2 = crop_y1 + side
+
+        if crop_x1 < 0:
+            crop_x2 = min(image_width, crop_x2 - crop_x1)
+            crop_x1 = 0
+        if crop_y1 < 0:
+            crop_y2 = min(image_height, crop_y2 - crop_y1)
+            crop_y1 = 0
+        if crop_x2 > image_width:
+            shift = crop_x2 - image_width
+            crop_x1 = max(0, crop_x1 - shift)
+            crop_x2 = image_width
+        if crop_y2 > image_height:
+            shift = crop_y2 - image_height
+            crop_y1 = max(0, crop_y1 - shift)
+            crop_y2 = image_height
+
+        crop_x2 = max(crop_x1 + 1, crop_x2)
+        crop_y2 = max(crop_y1 + 1, crop_y2)
+        return image_bgr[crop_y1:crop_y2, crop_x1:crop_x2].copy()
+
+    def _align_face(self, image_bgr: np.ndarray, face: object) -> np.ndarray | None:
+        try:
+            face_points = self._session.get_face_five_key_points(face).astype(np.float32)
+        except Exception as error:  # pragma: no cover - runtime dependency branch
+            LOGGER.warning("Face landmark extraction failed: %s", error)
+            return None
+
+        if face_points.shape != ARCFACE_TEMPLATE.shape:
+            return None
+
+        transform, _ = cv2.estimateAffinePartial2D(
+            face_points,
+            ARCFACE_TEMPLATE,
+            method=cv2.LMEDS,
+        )
+        if transform is None:
+            return None
+
+        return cv2.warpAffine(
+            image_bgr,
+            transform,
+            ALIGNED_FACE_SIZE,
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REFLECT101,
+        )

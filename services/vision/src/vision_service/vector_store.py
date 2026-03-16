@@ -58,6 +58,7 @@ class QdrantVectorStore:
         self,
         *,
         track_id: str,
+        source_id: str,
         camera_id: str,
         label: str,
         captured_at: str,
@@ -69,6 +70,7 @@ class QdrantVectorStore:
             vector=vector,
             payload={
                 "trackId": track_id,
+                "sourceId": source_id,
                 "cameraId": camera_id,
                 "label": label,
                 "capturedAt": captured_at,
@@ -80,7 +82,9 @@ class QdrantVectorStore:
         self,
         *,
         track_id: str,
+        source_id: str,
         camera_id: str,
+        label: str,
         captured_at: str,
         vector: list[float],
     ) -> None:
@@ -90,11 +94,108 @@ class QdrantVectorStore:
             vector=vector,
             payload={
                 "trackId": track_id,
+                "sourceId": source_id,
                 "cameraId": camera_id,
+                "label": label,
                 "capturedAt": captured_at,
                 "embeddingKind": "face",
             },
         )
+
+    def search_embeddings(
+        self,
+        *,
+        embedding_kind: str,
+        vector: list[float],
+        track_ids: list[str],
+    ) -> list[dict[str, Any]] | None:
+        if not self._enabled or not vector or not self._base_url:
+            return None
+        if not track_ids:
+            return []
+
+        collection = (
+            self._face_collection if embedding_kind == "face" else self._object_collection
+        )
+        point_id_by_track_id = {
+            track_id: _qdrant_point_id(f"{track_id}-face" if embedding_kind == "face" else track_id)
+            for track_id in track_ids
+        }
+        track_id_by_point_id = {
+            point_id: track_id for track_id, point_id in point_id_by_track_id.items()
+        }
+        try:
+            with httpx.Client(timeout=self._timeout_seconds) as client:
+                response = client.post(
+                    f"{self._base_url}/collections/{collection}/points/query",
+                    json={
+                        "query": [float(value) for value in vector],
+                        "filter": {
+                            "must": [
+                                {
+                                    "has_id": list(point_id_by_track_id.values()),
+                                }
+                            ]
+                        },
+                        "limit": len(point_id_by_track_id),
+                        "with_payload": True,
+                    },
+                )
+                if not response.is_success:
+                    detail = response.text.strip() or "unknown error"
+                    raise httpx.HTTPStatusError(
+                        f"{response.status_code} {response.reason_phrase}: {detail}",
+                        request=response.request,
+                        response=response,
+                    )
+            body = response.json()
+        except httpx.HTTPError as error:
+            LOGGER.warning("Qdrant query failed: %s", error)
+            self._status = VectorStoreStatus(
+                enabled=self._enabled,
+                available=False,
+                provider="qdrant",
+                detail=f"Vector query failed: {error}",
+            )
+            return None
+
+        raw_results = body.get("result", [])
+        if isinstance(raw_results, dict):
+            points = (
+                raw_results.get("points")
+                or raw_results.get("result")
+                or raw_results.get("items")
+                or []
+            )
+        else:
+            points = raw_results
+
+        ranked: list[dict[str, Any]] = []
+        for point in points:
+            if not isinstance(point, dict):
+                continue
+            payload = point.get("payload") if isinstance(point.get("payload"), dict) else {}
+            point_id = str(point.get("id"))
+            track_id = str(payload.get("trackId") or track_id_by_point_id.get(point_id) or "")
+            if not track_id:
+                continue
+            score = float(point.get("score") or 0.0)
+            if score <= 0:
+                continue
+            ranked.append(
+                {
+                    "trackId": track_id,
+                    "score": round(score, 6),
+                }
+            )
+
+        self._status = VectorStoreStatus(
+            enabled=self._enabled,
+            available=True,
+            provider="qdrant",
+            detail=f"Vector queries are using collection {collection}.",
+        )
+        return ranked
 
     def _upsert_vector(
         self,

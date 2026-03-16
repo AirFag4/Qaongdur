@@ -57,7 +57,10 @@ class ArtifactStore:
 
     def read_as_data_url(self, relative_path: str) -> str:
         payload = (self._root / relative_path).read_bytes()
-        return f"data:image/jpeg;base64,{b64encode(payload).decode('ascii')}"
+        return self.data_url_for_bytes(payload)
+
+    def data_url_for_bytes(self, payload: bytes, mime_type: str = "image/jpeg") -> str:
+        return f"data:{mime_type};base64,{b64encode(payload).decode('ascii')}"
 
     def _resize_image(self, image_bgr: np.ndarray, max_dimension: int) -> np.ndarray:
         height, width = image_bgr.shape[:2]

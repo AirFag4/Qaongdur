@@ -58,7 +58,7 @@ Workstream D has also started in the current repo state:
 - image search already tries face detection first and falls back to crop-image similarity when no searchable face is found
 - when both text and image are present, the backend already merges both ranked result sets into one gallery response
 - crop results can already carry `searchReason` and `searchScore` metadata for operator review
-- when local runtime keeps `VISION_EMBEDDING_ENABLED=false`, text search currently degrades to metadata ranking instead of true MobileCLIP text-to-image similarity
+- MobileCLIP now initializes lazily on first semantic-search use instead of during vision-service startup; if local runtime explicitly keeps `VISION_EMBEDDING_ENABLED=false`, text search degrades to metadata ranking instead of true MobileCLIP text-to-image similarity
 
 Continue from that baseline instead of planning multimodal search as greenfield work.
 

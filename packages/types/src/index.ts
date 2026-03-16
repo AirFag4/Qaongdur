@@ -288,7 +288,10 @@ export interface VisionPipelineStatus {
     detail: string;
   };
   embedding: {
+    enabled?: boolean;
+    state?: string;
     modelName: string;
+    detail?: string;
   };
   face: {
     available: boolean;
@@ -355,6 +358,8 @@ export interface CropTrack {
   faceStatus: string;
   faceModel?: string | null;
   faceDim?: number | null;
+  faceCount?: number;
+  faceDetail?: string | null;
   closedReason: string;
   firstPoint?: { x: number; y: number } | null;
   middlePoint?: { x: number; y: number } | null;
@@ -373,6 +378,7 @@ export interface CropTrackPage {
   pageSize: number;
   totalPages: number;
   searchModes?: string[];
+  imageQueryDebug?: CropImageQueryDebug | null;
 }
 
 export interface CropTrackDetail extends CropTrack {
@@ -386,12 +392,23 @@ export interface CropTrackDetail extends CropTrack {
   firstFrameDataUrl?: string | null;
   middleFrameDataUrl?: string | null;
   lastFrameDataUrl?: string | null;
+  faceDetectedDataUrl?: string | null;
+  faceAlignedDataUrl?: string | null;
   createdAt?: string;
 }
 
 export interface CropTrackSearchInput extends CropTrackFilter {
   textQuery?: string;
   imageBase64?: string;
+}
+
+export interface CropImageQueryDebug {
+  faceStatus: string;
+  faceCount: number;
+  detail?: string | null;
+  faceBBox?: [number, number, number, number] | null;
+  detectedFaceDataUrl?: string | null;
+  alignedFaceDataUrl?: string | null;
 }
 
 export interface SystemSettings {

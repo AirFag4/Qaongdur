@@ -103,6 +103,8 @@ const mockCropTracks: CropTrack[] = [
     faceStatus: "ready",
     faceModel: "InspireFace-small",
     faceDim: 512,
+    faceCount: 1,
+    faceDetail: "Face embedding generated from the selected face.",
     closedReason: "track-gap",
     firstPoint: { x: 82, y: 110 },
     middlePoint: { x: 118, y: 128 },
@@ -141,6 +143,8 @@ const mockCropTracks: CropTrack[] = [
     faceStatus: "skipped-label",
     faceModel: "InspireFace-small",
     faceDim: null,
+    faceCount: 0,
+    faceDetail: "Track label is not person.",
     closedReason: "end-of-source",
     firstPoint: { x: 73, y: 143 },
     middlePoint: { x: 136, y: 152 },
@@ -505,7 +509,10 @@ export class MockVmsApiClient implements VmsApiClient {
         detail: "Mock pipeline status",
       },
       embedding: {
-        modelName: "histogram-fallback",
+        enabled: true,
+        state: "ready",
+        modelName: "MobileCLIP2-S0",
+        detail: "Mock embedding runtime ready.",
       },
       face: {
         available: true,
@@ -637,6 +644,16 @@ export class MockVmsApiClient implements VmsApiClient {
         ...(hasImage ? ["image"] : []),
         ...(text ? ["text"] : []),
       ],
+      imageQueryDebug: hasImage
+        ? {
+            faceStatus: "ready",
+            faceCount: 1,
+            detail: "Mock query preview for image search.",
+            faceBBox: [24, 32, 116, 148],
+            detectedFaceDataUrl: createSvgDataUrl("query face", 172),
+            alignedFaceDataUrl: createSvgDataUrl("aligned", 150),
+          }
+        : undefined,
     };
   }
 
@@ -653,6 +670,10 @@ export class MockVmsApiClient implements VmsApiClient {
       firstBBox: [20, 40, 120, 220],
       middleBBox: [42, 48, 136, 228],
       lastBBox: [60, 52, 152, 236],
+      faceDetectedDataUrl:
+        track.label === "person" ? createSvgDataUrl("face detect", 180) : null,
+      faceAlignedDataUrl:
+        track.label === "person" ? createSvgDataUrl("face align", 160) : null,
       createdAt: new Date(Date.now() - 25_000).toISOString(),
     };
   }

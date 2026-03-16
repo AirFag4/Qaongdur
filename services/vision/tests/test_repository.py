@@ -103,6 +103,8 @@ def test_list_crop_tracks_paginates_results(tmp_path) -> None:
                 "face_status": "skipped",
                 "face_model": "mock-face",
                 "face_dim": None,
+                "face_count": 0,
+                "face_detail": None,
                 "closed_reason": "end-of-source",
                 "created_at": f"2026-03-09T10:{index:02d}:30+00:00",
             },

@@ -11,6 +11,15 @@ This slice exists because the current runtime still has two concrete problems:
 
 Make the current stack operational and predictable on constrained local hardware before continuing deeper `06` feature work.
 
+## Progress Update
+
+- shared media storage budget and Settings-page visibility for the `80/20` split have been implemented
+- crop search has been verified with face-first image search plus text/image query merging
+- MobileCLIP no longer initializes during vision-service startup; it now loads on the first semantic-search request instead
+- crop image search now queries Qdrant across the current web-filtered track window when vector storage is available
+- the crop page now supports drag-and-drop image queries, face detected/aligned query previews, and face-review panels in track detail
+- source-frame bbox overlays now render against the true frame aspect ratio instead of the outer letterboxed container
+
 ## Required Outcomes
 
 1. Use a shared media storage budget for the local stack.
@@ -74,3 +83,14 @@ This hardening slice is done when:
 - crop search is verified against the running stack
 
 Continue broader `06` work only after this slice is stable.
+
+## Follow-On Job Plan
+
+After this hardening slice, the next implementation pass should focus on:
+
+1. ROI-aware filtering and saved investigation pivots on top of the current crop/face review flow.
+2. Face-search recovery paths for older tracks that were processed before Qdrant or face-sidecar availability stabilized.
+3. Operator actions on top of the new face-debug previews:
+   - mark a face as review-worthy
+   - group repeated matches into subject/identity lists
+   - attach audit notes to future face-match decisions

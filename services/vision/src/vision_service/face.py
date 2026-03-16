@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 from dataclasses import dataclass
 import logging
 import time
@@ -19,6 +20,9 @@ class FaceEmbeddingResult:
     vector: list[float] | None
     detail: str | None = None
     face_count: int = 0
+    face_bbox: tuple[int, int, int, int] | None = None
+    detected_face_jpeg: bytes | None = None
+    aligned_face_jpeg: bytes | None = None
 
 
 class FaceEmbedder:
@@ -177,6 +181,9 @@ class FaceEmbedder:
 
         model_name = str(body.get("modelName") or self._model_name)
         self._model_name = model_name
+        face_box = body.get("faceBox")
+        detected_face_image = self._decode_optional_image(body.get("detectedFaceImageBase64"))
+        aligned_face_image = self._decode_optional_image(body.get("alignedFaceImageBase64"))
         return FaceEmbeddingResult(
             status=str(body.get("status") or "error"),
             model_name=model_name,
@@ -187,6 +194,13 @@ class FaceEmbedder:
             ),
             detail=str(body.get("detail") or ""),
             face_count=int(body.get("faceCount") or 0),
+            face_bbox=(
+                tuple(int(value) for value in face_box)
+                if isinstance(face_box, list | tuple) and len(face_box) == 4
+                else None
+            ),
+            detected_face_jpeg=detected_face_image,
+            aligned_face_jpeg=aligned_face_image,
         )
 
     def _probe_runtime(self, *, force: bool = False) -> None:
@@ -227,3 +241,11 @@ class FaceEmbedder:
         self._runtime_detail = str(body.get("detail") or "Face runtime reported no detail.")
         self._model_name = str(body.get("modelName") or self._model_name)
         self._last_probe_monotonic = now
+
+    def _decode_optional_image(self, encoded: object) -> bytes | None:
+        if not encoded:
+            return None
+        try:
+            return base64.b64decode(str(encoded))
+        except (ValueError, binascii.Error):
+            return None

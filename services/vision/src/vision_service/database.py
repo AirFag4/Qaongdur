@@ -95,6 +95,8 @@ CREATE TABLE IF NOT EXISTS track (
   face_status TEXT NOT NULL,
   face_model TEXT,
   face_dim INTEGER,
+  face_count INTEGER NOT NULL DEFAULT 0,
+  face_detail TEXT,
   closed_reason TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
@@ -164,6 +166,8 @@ class VisionRepository:
         self._ensure_column(connection, "track", "first_point_json", "TEXT")
         self._ensure_column(connection, "track", "middle_point_json", "TEXT")
         self._ensure_column(connection, "track", "last_point_json", "TEXT")
+        self._ensure_column(connection, "track", "face_count", "INTEGER NOT NULL DEFAULT 0")
+        self._ensure_column(connection, "track", "face_detail", "TEXT")
 
     def _ensure_column(
         self,
@@ -508,7 +512,8 @@ class VisionRepository:
                   first_bbox_json, middle_bbox_json, last_bbox_json,
                   first_point_json, middle_point_json, last_point_json,
                   embedding_status, embedding_model, embedding_dim,
-                  face_status, face_model, face_dim, closed_reason, created_at
+                  face_status, face_model, face_dim, face_count, face_detail,
+                  closed_reason, created_at
                 ) VALUES (
                   :id, :job_id, :source_id, :site_id, :camera_id, :camera_name, :label,
                   :detector_label, :first_seen_at, :middle_seen_at, :last_seen_at,
@@ -518,7 +523,8 @@ class VisionRepository:
                   :first_bbox_json, :middle_bbox_json, :last_bbox_json,
                   :first_point_json, :middle_point_json, :last_point_json,
                   :embedding_status, :embedding_model, :embedding_dim,
-                  :face_status, :face_model, :face_dim, :closed_reason, :created_at
+                  :face_status, :face_model, :face_dim, :face_count, :face_detail,
+                  :closed_reason, :created_at
                 )
                 """,
                 track_row,
@@ -666,6 +672,44 @@ class VisionRepository:
                 ORDER BY track.last_seen_at DESC
                 """,
                 [*params, model_name],
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_crop_track_candidates(
+        self,
+        *,
+        source_id: str | None = None,
+        camera_id: str | None = None,
+        label: str | None = None,
+        from_at: str | None = None,
+        to_at: str | None = None,
+        include_retired: bool = False,
+    ) -> list[dict[str, Any]]:
+        where_clause, params = self._build_track_where_clause(
+            source_id=source_id,
+            camera_id=camera_id,
+            label=label,
+            from_at=from_at,
+            to_at=to_at,
+            include_retired=include_retired,
+        )
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT track.id, track.last_seen_at
+                FROM track
+                JOIN video_source AS source ON source.id = track.source_id
+                {where_clause}
+                ORDER BY track.last_seen_at DESC
+                """
+                if where_clause
+                else """
+                SELECT track.id, track.last_seen_at
+                FROM track
+                JOIN video_source AS source ON source.id = track.source_id
+                ORDER BY track.last_seen_at DESC
+                """,
+                params,
             ).fetchall()
         return [dict(row) for row in rows]
 

@@ -51,9 +51,11 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 - `GET /api/v1/vision/crop-tracks` is paginated and returns only the representative middle crop for each card so the gallery stays responsive
 - `GET /api/v1/vision/crop-tracks/{track_id}` returns the full first/middle/last crop set plus saved source-frame snapshots and bbox metadata for the investigation modal
 - `POST /api/v1/vision/crop-search` accepts the same camera/time/label filters plus optional `textQuery` and `imageBase64`
-- image queries try face detection first and fall back to object-crop similarity when no searchable face is found
+- image queries try face detection first, search Qdrant across the currently filtered track window when vector storage is available, and fall back to object-crop similarity when no searchable face is found
 - combined text and image queries merge both result sets and annotate each returned track with `searchReason` and `searchScore`
-- the `/crops` page uses the middle crop as the representative card image and opens a closable investigation modal for detailed review
+- MobileCLIP now initializes lazily on the first image or text embedding request instead of during FastAPI app startup
+- the `/crops` page uses the middle crop as the representative card image, supports drag-and-drop query upload, and opens a closable investigation modal for detailed review
+- the investigation payload now includes detected-face and aligned-face previews for qualifying person tracks, and image-search responses include the uploaded-image face debug preview that the web UI renders
 - the `/crops` page hides retired mock-source history by default and exposes an `Include retired history` toggle
 - embeddings are computed from crop images only
 - face extraction is attempted once per qualifying person track through the separate `face-api` sidecar
@@ -63,9 +65,10 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 ## Current Limitations
 
 - MobileCLIP2 uses a deterministic 512-dimensional histogram fallback when the requested runtime weights are unavailable, so local Qdrant collections stay schema-compatible
+- the Docker image now pre-caches the default `MobileCLIP2-S0` weights so the first semantic query does not also need to download them
 - when local `.env` keeps `VISION_EMBEDDING_ENABLED=false`, text search falls back to track metadata ranking instead of true text-to-image similarity, while image search still remains face-first
 - the first `vision` start after rebuilding the image is slower than the earlier scaffold because the full detector, embedder, and tracking dependencies are installed in-container
-- if startup-time MobileCLIP initialization makes the API miss its health window on a lower-spec machine, set `VISION_EMBEDDING_ENABLED=false` in local `.env` and restart `vision`; the service will fall back to non-vector crop processing while remaining searchable by metadata and time
+- the first semantic search after a fresh service start can still take longer because MobileCLIP is loaded on demand rather than at app bind time
 - the first `face-api` start compiles InspireFace from the vendored `third_party/InspireFace` submodule and may download the `Megatron` pack into `/runtime`, so the face stage can report `service-unreachable` or `service-not-ready` until that bootstrap completes
 - clones that skipped submodule initialization must run `git submodule update --init --recursive` before rebuilding the `face-api` or `vision` images
 - the job processes the current point in each looping relay, not a hard reset to the exact beginning of the source file
@@ -75,3 +78,4 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 - historical tracks from retired mock sources remain in the SQLite store until explicit cleanup or `VISION_PURGE_RETIRED_MOCK_HISTORY=true` is enabled
 - the default runtime intentionally favors one mock source and one worker unless you raise `MOCK_VIDEO_MAX_SOURCES` or `VISION_SEGMENT_WORKER_COUNT`
 - face calls can still time out under heavier load even though the sidecar is healthy
+- the current face-alignment preview is generated from the same five-point face landmarks used around extraction, but the underlying InspireFace feature extraction still runs through the standard SDK call path
