@@ -18,7 +18,13 @@ Container path:
 ```bash
 git submodule update --init --recursive
 cp .env.example .env
-make vision-up
+docker compose up -d --build
+```
+
+After the images exist locally, the normal restart path is just:
+
+```bash
+docker compose up -d
 ```
 
 The container path is the recommended way to run the full mock-video slice because it pins CPU-only PyTorch for this profile and starts the paired `mock-streamer` plus `face-api` services.

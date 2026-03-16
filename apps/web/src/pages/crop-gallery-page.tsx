@@ -140,6 +140,38 @@ const observationFrameFor = (track: CropTrackDetail, key: ObservationKey) => {
   };
 };
 
+const computeContainedImageRect = ({
+  boxWidth,
+  boxHeight,
+  assetWidth,
+  assetHeight,
+}: {
+  boxWidth: number;
+  boxHeight: number;
+  assetWidth: number;
+  assetHeight: number;
+}) => {
+  if (boxWidth <= 0 || boxHeight <= 0 || assetWidth <= 0 || assetHeight <= 0) {
+    return {
+      left: 0,
+      top: 0,
+      width: 0,
+      height: 0,
+    };
+  }
+
+  const scale = Math.min(boxWidth / assetWidth, boxHeight / assetHeight);
+  const width = assetWidth * scale;
+  const height = assetHeight * scale;
+
+  return {
+    left: (boxWidth - width) / 2,
+    top: (boxHeight - height) / 2,
+    width,
+    height,
+  };
+};
+
 const createPlaybackSearch = (track: CropTrackDetail) => {
   const from = track.segmentStartAt ?? track.firstSeenAt;
   const to =
@@ -170,7 +202,14 @@ function TrackObservationViewer({
   operatorTimeZone: OperatorTimeZonePreference;
 }) {
   const observation = observationFrameFor(track, observationKey);
+  const frameImageRef = useRef<HTMLImageElement | null>(null);
   const [loadedFrameSize, setLoadedFrameSize] = useState({
+    width: 0,
+    height: 0,
+  });
+  const [renderedFrameRect, setRenderedFrameRect] = useState({
+    left: 0,
+    top: 0,
     width: 0,
     height: 0,
   });
@@ -191,14 +230,53 @@ function TrackObservationViewer({
       ? `${frameWidth} / ${frameHeight}`
       : "16 / 9";
 
+  useEffect(() => {
+    const image = frameImageRef.current;
+    if (!image) {
+      return undefined;
+    }
+
+    const syncRenderedFrameRect = () => {
+      const assetWidth = frameWidth > 0 ? frameWidth : image.naturalWidth;
+      const assetHeight = frameHeight > 0 ? frameHeight : image.naturalHeight;
+      setRenderedFrameRect(
+        computeContainedImageRect({
+          boxWidth: image.clientWidth,
+          boxHeight: image.clientHeight,
+          assetWidth,
+          assetHeight,
+        }),
+      );
+    };
+
+    syncRenderedFrameRect();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", syncRenderedFrameRect);
+      return () => window.removeEventListener("resize", syncRenderedFrameRect);
+    }
+
+    const observer = new ResizeObserver(syncRenderedFrameRect);
+    observer.observe(image);
+
+    return () => observer.disconnect();
+  }, [frameHeight, frameWidth, observation.frameSrc, observation.cropSrc]);
+
   const overlayStyle =
-    hasOverlay && bbox
-      ? {
-          left: `${(bbox[0] / frameWidth) * 100}%`,
-          top: `${(bbox[1] / frameHeight) * 100}%`,
-          width: `${((bbox[2] - bbox[0]) / frameWidth) * 100}%`,
-          height: `${((bbox[3] - bbox[1]) / frameHeight) * 100}%`,
-        }
+    hasOverlay && bbox && renderedFrameRect.width > 0 && renderedFrameRect.height > 0
+      ? (() => {
+          const x1 = Math.max(0, Math.min(bbox[0], frameWidth));
+          const y1 = Math.max(0, Math.min(bbox[1], frameHeight));
+          const x2 = Math.max(x1, Math.min(bbox[2], frameWidth));
+          const y2 = Math.max(y1, Math.min(bbox[3], frameHeight));
+
+          return {
+            left: renderedFrameRect.left + (x1 / frameWidth) * renderedFrameRect.width,
+            top: renderedFrameRect.top + (y1 / frameHeight) * renderedFrameRect.height,
+            width: ((x2 - x1) / frameWidth) * renderedFrameRect.width,
+            height: ((y2 - y1) / frameHeight) * renderedFrameRect.height,
+          };
+        })()
       : undefined;
 
   return (
@@ -252,6 +330,7 @@ function TrackObservationViewer({
         >
           <div className="relative w-full" style={{ aspectRatio: frameAspectRatio }}>
             <img
+              ref={frameImageRef}
               src={observation.frameSrc ?? observation.cropSrc}
               alt={`${track.cameraName} ${observationKey} observation`}
               className="block h-full w-full object-contain"
@@ -260,6 +339,18 @@ function TrackObservationViewer({
                   width: event.currentTarget.naturalWidth,
                   height: event.currentTarget.naturalHeight,
                 });
+                const assetWidth =
+                  frameWidth > 0 ? frameWidth : event.currentTarget.naturalWidth;
+                const assetHeight =
+                  frameHeight > 0 ? frameHeight : event.currentTarget.naturalHeight;
+                setRenderedFrameRect(
+                  computeContainedImageRect({
+                    boxWidth: event.currentTarget.clientWidth,
+                    boxHeight: event.currentTarget.clientHeight,
+                    assetWidth,
+                    assetHeight,
+                  }),
+                );
               }}
             />
             {overlayStyle ? (
@@ -297,14 +388,14 @@ function TrackObservationViewer({
         <div
           className={
             isDarkTheme
-              ? "aspect-[4/5] overflow-hidden rounded-md border border-stone-700 bg-stone-950"
-              : "aspect-[4/5] overflow-hidden rounded-md border border-slate-300 bg-white"
+              ? "flex aspect-[4/5] items-center justify-center overflow-hidden rounded-md border border-stone-700 bg-stone-950 p-2"
+              : "flex aspect-[4/5] items-center justify-center overflow-hidden rounded-md border border-slate-300 bg-white p-2"
           }
         >
           <img
             src={observation.cropSrc}
             alt={`${track.cameraName} ${observationKey} crop`}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain"
           />
         </div>
         <div
@@ -868,11 +959,11 @@ export function CropGalleryPage() {
                     </div>
 
                     <div className="mt-3 space-y-1">
-                      <div className="theme-panel-muted aspect-[4/5] overflow-hidden">
+                      <div className="theme-panel-muted flex aspect-[4/5] items-center justify-center overflow-hidden p-2">
                         <img
                           src={track.middleCropDataUrl}
                           alt={`${track.cameraName} representative crop`}
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-contain"
                         />
                       </div>
                       <p className="theme-panel-caption text-center text-[11px]">

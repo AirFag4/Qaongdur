@@ -41,8 +41,14 @@ Core container runtime:
 
 ```bash
 cp .env.example .env
-make docker-up
-make logs
+docker compose up -d --build
+docker compose logs -f --tail=200
+```
+
+After the images exist locally, the normal restart path is:
+
+```bash
+docker compose up -d
 ```
 
 Current behavior in this mode:
@@ -64,12 +70,12 @@ Mock-video vision pipeline:
 
 ```bash
 cp .env.example .env
-make vision-up
+docker compose up -d
 ```
 
 Current behavior in this mode:
 
-- `make vision-up` starts `vision`, `face-api`, `qdrant`, and `mock-streamer` together with the shared runtime dependencies they need
+- plain `docker compose up -d` now starts `vision`, `face-api`, `qdrant`, and `mock-streamer` together with the shared runtime dependencies they need because the repo root `.env` sets `COMPOSE_PROFILES=core,mock-video,face,vision-cpu`
 - `control-api` discovers the sibling `../Video` files as system-managed cameras and exposes them through the same camera and device APIs used by the web app
 - `mock-streamer` loops supported video files (`.mp4`, `.webm`, `.mkv`, `.mov`) into MediaMTX as RTSP paths
 - the default dev profile caps mock publishing to one active source with `MOCK_VIDEO_MAX_SOURCES=1` so lower-spec machines do not try to process every large file at once
@@ -104,7 +110,7 @@ Current behavior in this mode:
 Targeted mock-video publisher restart only:
 
 ```bash
-make mock-video-up
+docker compose up -d mock-streamer
 ```
 
 If `../Video` contains no supported video files, the publisher falls back to a synthetic test source:
@@ -116,15 +122,14 @@ You can change the mock path prefix, active mock-source cap, and fallback synthe
 Login path in this mode:
 
 - open `http://localhost:5173`
-- click `Continue To Keycloak`
+- click `Sign In`
 - sign in with a seeded user such as `pat.admin` / `ChangeMe123!`
 
 Hybrid host mode with real auth and real auth API, but mock business data in the UI:
 
 ```bash
 cp .env.example .env
-make docker-auth-up
-cp apps/web/.env.example apps/web/.env
+docker compose -f infra/docker/compose.auth.yml up -d
 cp services/control-api/.env.example services/control-api/.env
 cd services/control-api && uv run qaongdur-control-api
 pnpm --filter @qaongdur/web dev
@@ -222,11 +227,12 @@ Added the first production-oriented auth slice:
 Started the next backend and delivery milestone:
 
 - root `.env.example` for Compose-driven runtime config
+- root `compose.yml` entrypoint plus `COMPOSE_PROFILES` defaults for plain `docker compose up -d`
 - `infra/docker/compose.core.yml` for the `core` stack
 - container builds for `apps/web` and `services/control-api`
 - initial `services/vision` FastAPI scaffold plus `vision-cpu` profile entry
 - MediaMTX config under `infra/mediamtx/mediamtx.yml`
-- `make docker-up`, `docker-down`, `logs`, `seed`, and `vision-up`
+- `docker compose` is now the primary runtime path, while `make` remains an optional shortcut layer
 
 ### 8. Mock Video Vision Slice
 
@@ -344,7 +350,7 @@ For a local development reset, recreate the Keycloak data store and let the real
 ```bash
 docker compose --env-file .env -f infra/docker/compose.core.yml down
 docker volume rm docker_keycloak-postgres-data
-make docker-up
+docker compose up -d --build
 ```
 
 ## RTSP Troubleshooting

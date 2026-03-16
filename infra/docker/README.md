@@ -14,18 +14,23 @@ Preferred path from the repo root:
 ```bash
 git submodule update --init --recursive
 cp .env.example .env
-make docker-up
+docker compose up -d --build
+```
+
+After the images exist locally, the normal restart path is:
+
+```bash
+docker compose up -d
 ```
 
 Useful commands:
 
 ```bash
-make docker-down
-make logs
-make seed
-make vision-up
-make face-up
-make mock-video-up
+docker compose down
+docker compose logs -f --tail=200
+docker compose run --rm object-storage-bootstrap
+docker compose up -d face-api
+docker compose up -d mock-streamer
 ```
 
 Notes:
@@ -49,10 +54,8 @@ Notes:
 - `mock-streamer`
 - `recording-pruner`
 
-The `vision` and `qdrant` services are available under the `vision-cpu` profile via `make vision-up`.
-The `face-api` service is available under the `face` profile via `make face-up`.
-The `mock-streamer` service now starts with the default `core` stack so local `../Video` clips keep publishing after `make docker-up`.
-Use `make mock-video-up` when you want to rebuild or restart only the mock publisher.
+The repo root `.env` now sets `COMPOSE_PROFILES=core,mock-video,face,vision-cpu`, so plain `docker compose up -d` also includes `vision`, `qdrant`, `face-api`, and `mock-streamer` by default.
+Use `docker compose up -d mock-streamer` when you want to restart only the mock publisher.
 
 ## Current Media Slice
 
@@ -90,7 +93,7 @@ Start it with:
 
 ```bash
 cp .env.example .env
-make vision-up
+docker compose up -d
 ```
 
 Current behavior:
@@ -128,8 +131,8 @@ For local testing without a physical camera:
 
 ```bash
 cp .env.example .env
-make docker-up
-make mock-video-up
+docker compose up -d
+docker compose up -d mock-streamer
 ```
 
 The mock streamer now prefers real files from `../Video`:

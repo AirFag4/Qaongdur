@@ -51,8 +51,8 @@ Current run modes:
 
 - UI-only mock mode: start `pnpm --filter @qaongdur/web dev`
 - hybrid auth mode: start Keycloak and `services/control-api`, then run the web app locally
-- core container mode: run `make docker-up`, which starts the full local stack and uses the real backend for camera, live, overview, playback, and device routes
-- VMS-backed mock-video mode: run `make vision-up`, which adds `mock-streamer`, `face-api`, and `vision` on top of the core stack so the crop pipeline consumes MediaMTX relay URLs instead of file paths
+- core container mode: run `docker compose up -d`, which starts the full local stack and uses the real backend for camera, live, overview, playback, and device routes
+- VMS-backed mock-video mode: the repo root `.env` now sets `COMPOSE_PROFILES=core,mock-video,face,vision-cpu`, so the same `docker compose up -d` path also brings up `mock-streamer`, `face-api`, `qdrant`, and `vision` by default
 
 ### `VmsApiClient`
 

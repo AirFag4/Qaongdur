@@ -1,0 +1,4 @@
+name: docker
+
+include:
+  - path: ./infra/docker/compose.core.yml

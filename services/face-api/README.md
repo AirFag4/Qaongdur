@@ -23,7 +23,7 @@ FastAPI sidecar that boots the vendored InspireFace runtime and exposes crop-lev
 ```bash
 git submodule update --init --recursive
 cp .env.example .env
-make face-up
+docker compose up -d --build face-api
 ```
 
 Or run the full stack that needs it:
@@ -31,7 +31,7 @@ Or run the full stack that needs it:
 ```bash
 git submodule update --init --recursive
 cp .env.example .env
-make vision-up
+docker compose up -d --build
 ```
 
 ## Current Limitation

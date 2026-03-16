@@ -2,7 +2,7 @@ import Keycloak from "keycloak-js";
 
 const readRequiredValue = (value: string | undefined, label: string) => {
   if (!value) {
-    return `${label} is missing. Copy apps/web/.env.example to apps/web/.env and fill it in.`;
+    return `${label} is missing. Make sure the repo root .env defines it, then restart the web app.`;
   }
   return undefined;
 };

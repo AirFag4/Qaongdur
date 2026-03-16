@@ -51,8 +51,8 @@ export function AuthScreen({ error, onLogin, onRegister }: AuthScreenProps) {
 
             <div className="space-y-3 rounded-xl border border-stone-800 bg-stone-950/60 p-3 text-sm text-stone-300">
               <p>1. Start Keycloak from `infra/docker/compose.auth.yml`.</p>
-              <p>2. Copy `apps/web/.env.example` to `apps/web/.env`.</p>
-              <p>3. Sign in with one of the seeded realm users, then register a passkey from the app rail.</p>
+              <p>2. Make sure the repo root `.env` contains the Vite Keycloak settings.</p>
+              <p>3. Restart the web app, then sign in with one of the seeded realm users.</p>
             </div>
 
             <div className="rounded-xl border border-stone-800 bg-stone-950/60 p-3 text-xs leading-6 text-stone-400">

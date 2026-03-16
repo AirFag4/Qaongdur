@@ -154,6 +154,7 @@ def _insert_track(
     detector_label: str,
     first_seen_at: str,
     last_seen_at: str,
+    segment_path: str = "/recordings/source-a/segment.mp4",
     object_vector: list[float] | None = None,
     face_vector: list[float] | None = None,
 ) -> None:
@@ -173,7 +174,7 @@ def _insert_track(
             "first_seen_offset_ms": 0,
             "middle_seen_offset_ms": 400,
             "last_seen_offset_ms": 800,
-            "segment_path": "/recordings/source-a/segment.mp4",
+            "segment_path": segment_path,
             "segment_start_at": first_seen_at,
             "segment_duration_sec": 60.0,
             "frame_count": 5,
@@ -242,6 +243,19 @@ def _build_repository(tmp_path) -> VisionRepository:
         started_at="2026-03-10T15:00:00+00:00",
     )
     return repository
+
+
+def _write_segment_video(path, *, width: int, height: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    writer = cv2.VideoWriter(
+        str(path),
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        5.0,
+        (width, height),
+    )
+    assert writer.isOpened()
+    writer.write(np.zeros((height, width, 3), dtype=np.uint8))
+    writer.release()
 
 
 def test_text_search_falls_back_to_track_metadata(tmp_path) -> None:
@@ -398,3 +412,46 @@ def test_image_search_returns_face_query_debug_payload(tmp_path) -> None:
         "alignedFaceDataUrl": "data:image/jpeg;base64,YWxpZ25lZA==",
     }
     assert vector_store.calls[0]["track_ids"] == ["trk-person-face"]
+
+
+def test_track_detail_probes_segment_dimensions_when_source_metadata_is_missing(tmp_path) -> None:
+    repository = VisionRepository(str(tmp_path / "vision.sqlite3"))
+    repository.sync_sources(
+        [
+            {
+                **_source_row("source-a", updated_at="2026-03-10T15:00:00+00:00"),
+                "frame_width": 0,
+                "frame_height": 0,
+            }
+        ]
+    )
+    repository.create_job(
+        job_id="job-1",
+        source_ids=["source-a"],
+        sampled_fps=2.0,
+        started_at="2026-03-10T15:00:00+00:00",
+    )
+    segment_path = tmp_path / "recordings" / "source-a" / "segment.mp4"
+    _write_segment_video(segment_path, width=1280, height=720)
+    _insert_track(
+        repository,
+        track_id="trk-person",
+        label="person",
+        detector_label="person",
+        first_seen_at="2026-03-10T15:01:00+00:00",
+        last_seen_at="2026-03-10T15:01:05+00:00",
+        segment_path=str(segment_path),
+    )
+    service = _service_with_repository(
+        repository,
+        object_embedder=_ObjectEmbedderStub(),
+        face_embedder=_FaceEmbedderStub(),
+    )
+
+    track = repository.get_crop_track("trk-person")
+    assert track is not None
+
+    payload = service._serialize_track(track, include_detail=True)
+
+    assert payload["sourceFrameWidth"] == 1280
+    assert payload["sourceFrameHeight"] == 720

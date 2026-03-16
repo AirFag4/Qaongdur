@@ -23,7 +23,7 @@ This auth stack is also the first slice of the future `core` container runtime. 
 
 ### Web App
 
-- Env example: `apps/web/.env.example`
+- Vite auth config is now read from the repo root `.env`
 - Keycloak session bootstrap: `apps/web/src/auth`
 - Authenticated UI gate: `apps/web/src/App.tsx`
 - Approval and passkey actions live in the agent rail so the future chatbot stays inside the same session model
@@ -38,31 +38,32 @@ This auth stack is also the first slice of the future `core` container runtime. 
 ## Start The Stack
 
 1. Copy `.env.example` to `.env`.
-2. Run `make docker-up` from the repo root.
+2. Run `docker compose up -d` from the repo root.
 
 Current browser flow:
 
 1. Open `http://localhost:5173`.
 2. The app checks for an existing Keycloak browser session.
 3. If you are not signed in yet, the app shows its auth screen.
-4. Click `Continue To Keycloak` to start login.
+4. Click `Sign In` to start login.
 
-Auth-only bootstrap remains available with `make docker-auth-up`.
+Auth-only bootstrap remains available with `docker compose -f infra/docker/compose.auth.yml up -d`.
 
 If Keycloak was already running from an older realm import, reset the Keycloak Postgres volume before expecting real backend auth to work:
 
 ```bash
 docker compose --env-file .env -f infra/docker/compose.core.yml down
 docker volume rm docker_keycloak-postgres-data
-make docker-up
+docker compose up -d --build
 ```
 
 Host-based inner loop is still available:
 
-1. Copy `apps/web/.env.example` to `apps/web/.env`.
+1. Copy `.env.example` to `.env` at the repo root if it does not exist yet.
 2. Copy `services/control-api/.env.example` to `services/control-api/.env`.
-3. Start the API from `services/control-api` with `uv run qaongdur-control-api`.
-4. Start the web app from the repo root with `pnpm --filter @qaongdur/web dev`.
+3. Start Keycloak with `docker compose -f infra/docker/compose.auth.yml up -d`.
+4. Start the API from `services/control-api` with `uv run qaongdur-control-api`.
+5. Start the web app from the repo root with `pnpm --filter @qaongdur/web dev`.
 
 Current limitation:
 

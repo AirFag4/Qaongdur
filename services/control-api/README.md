@@ -7,7 +7,7 @@ This service is now containerized as part of the `core` Compose runtime and stil
 ## Local Setup
 
 1. Copy `.env.example` to `.env`.
-2. Start Keycloak or the full core runtime from the repo root with `make docker-up`.
+2. Start Keycloak or the full core runtime from the repo root with `docker compose up -d`.
 3. Run the API with `uv run qaongdur-control-api` from this directory.
 
 Alternative development command:

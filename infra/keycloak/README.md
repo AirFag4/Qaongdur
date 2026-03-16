@@ -43,7 +43,7 @@ The realm import sets WebAuthn relying-party defaults, but the full passwordless
 Recommended local sequence:
 
 1. Copy `.env.example` to `.env` at the repo root.
-2. Start Keycloak with `make docker-auth-up` or boot the full stack with `make docker-up`.
+2. Start Keycloak with `docker compose -f infra/docker/compose.auth.yml up -d` or boot the full stack with `docker compose up -d`.
 3. Open the admin console and inspect the imported `qaongdur-dev` realm.
 4. Enable WebAuthn passwordless in the browser authentication flow.
 5. Let users register passkeys through the Keycloak account or the in-app `webauthn-register-passwordless` action.
@@ -59,5 +59,5 @@ That means a typical local login looks like this:
 
 1. open `http://localhost:5173`
 2. see the app auth screen when no browser session exists yet
-3. click `Continue To Keycloak`
+3. click `Sign In`
 4. complete login in Keycloak

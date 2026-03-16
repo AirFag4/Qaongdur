@@ -53,6 +53,13 @@ def _point_from_bbox(bbox: tuple[int, int, int, int]) -> dict[str, int]:
     }
 
 
+def _int_or_zero(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 @dataclass(slots=True)
 class SegmentTask:
     source: VisionSource
@@ -462,6 +469,7 @@ class VisionPipelineService:
             "searchReason": track.get("search_reason"),
         }
         if include_detail:
+            source_frame_width, source_frame_height = self._resolve_track_frame_dimensions(track)
             payload.update(
                 {
                     "firstCropDataUrl": self._artifact_store.read_as_data_url(assets.get("first")),
@@ -469,8 +477,8 @@ class VisionPipelineService:
                     "firstBBox": json.loads(track["first_bbox_json"]),
                     "middleBBox": json.loads(track["middle_bbox_json"]),
                     "lastBBox": json.loads(track["last_bbox_json"]),
-                    "sourceFrameWidth": track.get("source_frame_width"),
-                    "sourceFrameHeight": track.get("source_frame_height"),
+                    "sourceFrameWidth": source_frame_width,
+                    "sourceFrameHeight": source_frame_height,
                     "firstFrameDataUrl": (
                         self._artifact_store.read_as_data_url(assets["frame-first"])
                         if assets.get("frame-first")
@@ -500,6 +508,34 @@ class VisionPipelineService:
                 }
             )
         return payload
+
+    def _resolve_track_frame_dimensions(
+        self,
+        track: dict[str, object],
+    ) -> tuple[int | None, int | None]:
+        width = _int_or_zero(track.get("source_frame_width"))
+        height = _int_or_zero(track.get("source_frame_height"))
+        if width > 0 and height > 0:
+            return width, height
+
+        segment_path = track.get("segment_path")
+        if not segment_path:
+            return (width or None), (height or None)
+
+        capture = cv2.VideoCapture(str(segment_path))
+        if not capture.isOpened():
+            return (width or None), (height or None)
+
+        try:
+            probed_width = _int_or_zero(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+            probed_height = _int_or_zero(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        finally:
+            capture.release()
+
+        if probed_width > 0 and probed_height > 0:
+            return probed_width, probed_height
+
+        return (width or None), (height or None)
 
     def _decode_query_image(self, image_base64: str) -> np.ndarray:
         encoded = image_base64.strip()
