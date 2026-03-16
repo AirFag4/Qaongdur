@@ -35,6 +35,7 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 - `POST /api/v1/vision/mock-jobs/run`
 - `GET /api/v1/vision/crop-tracks`
 - `GET /api/v1/vision/crop-tracks/{track_id}`
+- `POST /api/v1/vision/crop-search`
 
 ## Current Mock-Video Flow
 
@@ -54,6 +55,7 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 - image queries try face detection first, search Qdrant across the currently filtered track window when vector storage is available, and fall back to object-crop similarity when no searchable face is found
 - combined text and image queries merge both result sets and annotate each returned track with `searchReason` and `searchScore`
 - MobileCLIP now initializes lazily on the first image or text embedding request instead of during FastAPI app startup
+- once the service is healthy and MobileCLIP has loaded, live text-only crop-search requests return `searchModes=["text"]`
 - the `/crops` page uses the middle crop as the representative card image, supports drag-and-drop query upload, and opens a closable investigation modal for detailed review
 - the investigation payload now includes detected-face and aligned-face previews for qualifying person tracks, and image-search responses include the uploaded-image face debug preview that the web UI renders
 - the `/crops` page hides retired mock-source history by default and exposes an `Include retired history` toggle
@@ -69,6 +71,7 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 - when local `.env` keeps `VISION_EMBEDDING_ENABLED=false`, text search falls back to track metadata ranking instead of true text-to-image similarity, while image search still remains face-first
 - the first `vision` start after rebuilding the image is slower than the earlier scaffold because the full detector, embedder, and tracking dependencies are installed in-container
 - the first semantic search after a fresh service start can still take longer because MobileCLIP is loaded on demand rather than at app bind time
+- some current `GET /api/v1/vision/status` responses still omit `embedding.state` and `embedding.detail` even though the intended contract includes them, so clients should treat missing embedding fields as unknown
 - the first `face-api` start compiles InspireFace from the vendored `third_party/InspireFace` submodule and may download the `Megatron` pack into `/runtime`, so the face stage can report `service-unreachable` or `service-not-ready` until that bootstrap completes
 - clones that skipped submodule initialization must run `git submodule update --init --recursive` before rebuilding the `face-api` or `vision` images
 - the job processes the current point in each looping relay, not a hard reset to the exact beginning of the source file
@@ -79,3 +82,9 @@ It installs `supervision` from the vendored `third_party/supervision` submodule,
 - the default runtime intentionally favors one mock source and one worker unless you raise `MOCK_VIDEO_MAX_SOURCES` or `VISION_SEGMENT_WORKER_COUNT`
 - face calls can still time out under heavier load even though the sidecar is healthy
 - the current face-alignment preview is generated from the same five-point face landmarks used around extraction, but the underlying InspireFace feature extraction still runs through the standard SDK call path
+
+## Model Assets
+
+- detector weight: `/app/yolov8n.pt`
+- MobileCLIP cache: `/root/.cache/huggingface/hub/models--timm--MobileCLIP2-S0-OpenCLIP/.../open_clip_model.safetensors`
+- keep local backups outside Git; see [docs/model-assets.md](../../docs/model-assets.md)

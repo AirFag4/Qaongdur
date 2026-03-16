@@ -96,6 +96,9 @@ Current behavior in this mode:
 - the first `face-api` startup compiles the vendored InspireFace runtime and downloads the `Megatron` pack inside the container, so it can take several minutes
 - the first `vision` startup after a clean rebuild can take longer than the earlier scaffold because detector and embedder runtimes are installed in the image, but MobileCLIP now loads lazily on first semantic-search use instead of during API startup
 - local runtime can keep `VISION_EMBEDDING_ENABLED=true` again because MobileCLIP no longer initializes during app bind; if you explicitly set it to `false`, text search falls back to track-metadata ranking while image search still uses face-first matching plus crop-vector fallback
+- once `vision` becomes healthy, live semantic text search is available through `/api/v1/vision/crop-search`; current Docker verification returns `searchModes=["text"]` for text-only queries instead of metadata fallback
+- current known gap: some live `/api/v1/vision/status` responses still omit `embedding.state` and `embedding.detail` even though the API contract expects them, so the crop-page runtime hint can be incomplete until that status serializer mismatch is fixed
+- detector, MobileCLIP, and face resource-pack weights should be backed up outside Git if you want to avoid cold re-downloads or rehydration; see `docs/model-assets.md`
 - VLM is skipped in this slice
 
 Targeted mock-video publisher restart only:
@@ -250,7 +253,10 @@ Current limitations of this slice:
 - default dev settings favor stability over scale: one mock source and one worker unless you raise `MOCK_VIDEO_MAX_SOURCES` or `VISION_SEGMENT_WORKER_COUNT`
 - the face sidecar can still time out under load even when it reports healthy at startup
 - MobileCLIP initialization is now deferred until the first image or text embedding request, and the default Docker image pre-caches the shipped `MobileCLIP2-S0` weights so the first semantic query does not also need to download them
+- live Docker verification now shows semantic text search returning `searchModes=["text"]` once `vision` is healthy, so text search is no longer limited to metadata fallback in the default runtime
+- some live `GET /api/v1/vision/status` responses still serialize only `embedding.modelName` and omit `embedding.enabled`, `embedding.state`, and `embedding.detail`, which can make the crop-page status hint disagree with the actual search path
 - if you still want metadata-only text search on a constrained machine, set `VISION_EMBEDDING_ENABLED=false` in local `.env`; the vision API will stay searchable by metadata and time while image search continues to use face-first matching plus crop-vector fallback
+- model assets are intentionally not committed to this repo; keep any detector, MobileCLIP, or Megatron backups in a sibling folder outside Git and refresh them when model names change
 
 ## For Developers
 

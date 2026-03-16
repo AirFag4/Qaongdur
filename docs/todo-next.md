@@ -10,11 +10,13 @@ Near-term follow-up items after the current recorded-chunk vision slice.
 ## Runtime Stability
 
 - Reduce or eliminate `face-api` timeout failures under processing load.
+- Fix the `GET /api/v1/vision/status` embedding contract gap so `embedding.enabled`, `embedding.state`, and `embedding.detail` always match the real semantic-search runtime.
 - Add a retry or backfill path for any segments processed while vector storage was degraded before the 512-dimensional fallback alignment.
 - Make `VisionSource.processedSegmentCount`, `latestProcessedAt`, and `lastSegmentAt` reflect live progress correctly.
 - Add a writable cleanup action for retired mock-source history instead of relying only on the env-backed purge toggle.
 - Measure first-query MobileCLIP warm-up latency now that initialization is lazy, and decide whether a background warm-up path is still worth adding.
 - Decide whether the detector runtime should also move to a startup-safe lazy path, since `yolov8n.pt` is still initialized during app construction.
+- Add a scripted local backup and restore workflow for detector, MobileCLIP, and face resource-pack weights outside Git.
 
 ## Throughput
 
@@ -38,11 +40,12 @@ Near-term follow-up items after the current recorded-chunk vision slice.
 - Make recording segment duration and related runtime knobs writable from the Settings page instead of env-only.
 - Add source and time summaries to the crop page so active-versus-retired history is easier to reason about at a glance.
 - Add a richer search summary so operators can tell whether a crop result came from face-image, object-image, true text embedding, or metadata fallback.
+- Add an explicit `embedding status unknown` UI state so missing status fields do not get displayed as if text search were disabled.
 
 ## Vision Feature Follow-Ups
 
 - Add ROI definition and filtering to the persisted schema and processing loop.
-- Harden text, image, and face search for loaded MobileCLIP runtime and make the first-query warm-up path more observable in the UI.
+- Benchmark semantic text-search relevance now that live availability is verified, then tune query summaries and ranking explanation in the UI.
 - Extend the new face-debug previews with operator actions, retry/backfill flows, and clearer failure states when the face sidecar is degraded.
 - Add identity lists, subject review, and face-match audit actions on top of the current face-first search path.
 - Keep VLM disabled until the recorded-chunk path, vector storage, and face reliability are stable.

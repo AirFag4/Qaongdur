@@ -39,3 +39,9 @@ make vision-up
 - the first startup can take several minutes because the sidecar compiles InspireFace from source before the HTTP service becomes available
 - the first startup also downloads the `Megatron` model pack into the runtime volume when the vendored repo does not already include it
 - clones that skipped `--recurse-submodules` must initialize `third_party/InspireFace` before the image can build
+
+## Model Assets
+
+- active face pack: `/runtime/resources/pack/Megatron`
+- this path lives in the persistent Docker runtime volume mounted into the sidecar
+- keep any local backup of the pack outside Git; see [docs/model-assets.md](../../docs/model-assets.md)

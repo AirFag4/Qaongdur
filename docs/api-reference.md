@@ -322,6 +322,12 @@ All of the following types live in `packages/types/src/index.ts`.
 - `latestJob?: VisionJobStatus | null`
 - `storage: VisionStorageStatus`
 
+Current live caveat:
+
+- the intended contract includes `embedding.enabled`, `embedding.state`, and `embedding.detail`
+- some current Docker runs still serialize only `embedding.modelName` even while semantic text search is working
+- frontend consumers should treat missing embedding fields as `unknown` rather than assuming text fallback
+
 ### `VisionJobStatus`
 
 - `id: string`
@@ -404,6 +410,12 @@ All of the following types live in `packages/types/src/index.ts`.
 - `totalPages: number`
 - `searchModes?: string[]`
 - `imageQueryDebug?: CropImageQueryDebug | null`
+
+Current live behavior:
+
+- semantic text queries return `searchModes: ["text"]` once MobileCLIP is available
+- degraded text queries return `searchModes: ["text-fallback"]` when semantic embedding is disabled or unavailable
+- image queries can return `face-image`, `image`, or merged mode arrays such as `["image", "text"]`
 
 ### `CropTrackDetail`
 

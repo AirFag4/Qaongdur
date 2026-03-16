@@ -59,6 +59,7 @@ Workstream D has also started in the current repo state:
 - when both text and image are present, the backend already merges both ranked result sets into one gallery response
 - crop results can already carry `searchReason` and `searchScore` metadata for operator review
 - MobileCLIP now initializes lazily on first semantic-search use instead of during vision-service startup; if local runtime explicitly keeps `VISION_EMBEDDING_ENABLED=false`, text search degrades to metadata ranking instead of true MobileCLIP text-to-image similarity
+- live Docker verification has already confirmed text-only crop search returning `searchModes=["text"]` once `vision` is healthy, although the separate `vision/status` serializer bug can still leave the UI hint incomplete
 
 Continue from that baseline instead of planning multimodal search as greenfield work.
 

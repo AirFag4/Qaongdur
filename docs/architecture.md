@@ -55,6 +55,7 @@ Current implemented slice:
 - the crop modal now exposes detected-face and aligned-face previews per qualifying person track so operators can inspect what the face stage actually used
 - operator-facing playback and crop search windows now use a configurable timezone preference instead of a fixed UTC-style input flow
 - the optional `face-api` sidecar uses the vendored `third_party/InspireFace` submodule and hydrates the `Megatron` pack into its runtime volume for person-track face embeddings
+- live Docker verification now confirms semantic text search is working through `POST /api/v1/vision/crop-search` once `vision` is healthy, with result payloads reporting `searchModes=["text"]`
 
 Next planned slice:
 
@@ -70,6 +71,8 @@ Current known limitation:
 - MobileCLIP now initializes lazily on the first semantic-search request instead of during vision-service startup, so default local runtime can leave `VISION_EMBEDDING_ENABLED=true`
 - when `VISION_EMBEDDING_ENABLED=false`, crop text search falls back to track metadata ranking instead of true MobileCLIP text-to-image similarity
 - the first `face-api` startup compiles InspireFace from source, so face status can remain unavailable for several minutes on a cold boot
+- some live `vision/status` payloads still omit `embedding.state` and `embedding.detail`, so the crop-page readiness hint can disagree with the actual semantic-search path
+- runtime model assets should be backed up outside Git; see `docs/model-assets.md`
 
 ## Task 03 Vision Data Shape
 
