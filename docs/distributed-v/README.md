@@ -18,6 +18,32 @@ Change the execution model:
 - worker onboarding uses `ssh` only for provisioning and bootstrap
 - search stays centralized even when inference is distributed
 
+## Current Status On 2026-03-17
+
+The first remote analytic machine rollout is live, and the crop-gallery path now works through the distributed stack.
+
+- `vision-api` is running locally from `infra/docker/compose.core.yml` plus `infra/docker/compose.distributed-central.yml`
+- `control-api` is now explicitly wired to `vision-api` by `infra/docker/compose.distributed-central.yml`, so `/api/v1/vision/crop-tracks` works again through the authenticated control plane
+- the web crop gallery now defaults to a 24 hour window instead of only the last 10 minutes, which exposes the already-produced distributed crop tracks by default
+- remote analytic workers on `ati-local-home` are registered, heartbeating, and actively consuming `vision.process_segment` jobs from Redis
+- CUDA is verified on the remote RTX 3060 host: the worker container reports `torch.cuda.is_available() == True`, the detector resolves to `cuda:0`, and live `nvidia-smi` samples showed non-zero GPU utilization with about 1.0 to 1.6 GiB of GPU memory in use
+- the central scheduler is now issuing jobs at `sampleFps=10.0`
+- the old rounded frame-interval sampler was proven to undershoot that target on 15 FPS recordings (`framesDecoded=900`, `framesSampled=450`)
+- the Compose-managed worker on `ati-local-home` now imports `/app/src` through `PYTHONPATH=/app/src` and completed a real 60 second job with `framesDecoded=900` and `framesSampled=600`, confirming the timestamp-based sampler reaches the intended 10 FPS target on the steady-state service container
+- crop tracks written by distributed jobs are queryable through `control-api` and include `sampleFps: 10.0` plus crop image payloads
+- the central stack now has `VISION_FACE_ENABLED=false`, so live status reports the face stage as disabled and newly queued work lands on `vision.cpu`
+
+What is still different from the target:
+
+- metadata is still persisted in the `vision-api` SQLite volume, not Postgres
+- segment upload and scan logic currently lives inside `vision-api`; there is no separate `recording-sync` service yet
+- face enrichment is still disabled on the live workers (`VISION_FACE_ENABLED=false`)
+- historical work already queued on `vision.cpu.face` is still draining from the earlier configuration even though new jobs now route to `vision.cpu`
+- old `vision.local` rows from the earlier single-node path still appear in queue status reads
+- the central host still does non-trivial work during distributed runs because recording scan, segment upload, result callbacks, and crop persistence still live inside `vision-api`; offload is real, but the main machine is not idle yet
+- the `vision-api` scanner now skips re-hashing already-uploaded queued or processed segments and tolerates disappearing files, but the older backlog of pending recordings still keeps central CPU higher than the final target
+- `infra/docker/compose.worker.yml` now sets `PYTHONPATH=/app/src` so future Compose worker restarts use the mounted source tree instead of the stale installed package path
+
 ## Primary Decisions
 
 - Use `Celery + Redis` for job dispatch and worker-side pull-based load balancing.

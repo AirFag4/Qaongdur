@@ -1,0 +1,92 @@
+services:
+  vision-worker:
+    profiles: ["vision-worker-cpu", "distributed-mock"]
+    image: qaongdur-vision-runtime:distributed-dev
+    build:
+      context: ../..
+      dockerfile: services/vision/Dockerfile
+      args:
+        TORCH_INDEX_URL: ${VISION_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+        TORCH_PACKAGES: ${VISION_TORCH_PACKAGES:-torch torchvision}
+    runtime: ${VISION_CONTAINER_RUNTIME:-runc}
+    environment:
+      PYTHONPATH: /app/src
+      QAONGDUR_VISION_ENV: production
+      QAONGDUR_VISION_EXECUTION_MODE: worker
+      QAONGDUR_VISION_DATA_DIR: /data
+      QAONGDUR_VISION_ARTIFACTS_DIR: /data/artifacts
+      QAONGDUR_VISION_WORKER_RUNTIME_DIR: /data/worker-runtime
+      QAONGDUR_VISION_DATABASE_PATH: /data/vision.sqlite3
+      QAONGDUR_VISION_SAMPLE_FPS: ${VISION_SAMPLE_FPS}
+      QAONGDUR_VISION_MAX_SAMPLE_FPS: ${VISION_MAX_SAMPLE_FPS:-10.0}
+      QAONGDUR_VISION_EMBEDDING_ENABLED: ${VISION_EMBEDDING_ENABLED}
+      QAONGDUR_VISION_EMBEDDING_MODEL_NAME: ${VISION_EMBEDDING_MODEL_NAME:-MobileCLIP2-S0}
+      QAONGDUR_VISION_EMBEDDING_DEVICE: ${VISION_EMBEDDING_DEVICE:-cpu}
+      QAONGDUR_VISION_FACE_ENABLED: ${VISION_FACE_ENABLED}
+      QAONGDUR_VISION_FACE_MIN_TRACK_SECONDS: ${VISION_FACE_MIN_TRACK_SECONDS}
+      QAONGDUR_VISION_FACE_MODEL_NAME: ${VISION_FACE_MODEL_NAME:-Megatron}
+      QAONGDUR_VISION_FACE_SERVICE_URL: ${VISION_FACE_SERVICE_URL:-http://face-api:8020}
+      QAONGDUR_VISION_VECTOR_STORE_ENABLED: "true"
+      QAONGDUR_VISION_VECTOR_STORE_URL: ${VISION_VECTOR_STORE_URL:-http://qdrant:6333}
+      QAONGDUR_VISION_OBJECT_STORAGE_ENDPOINT: ${VISION_OBJECT_STORAGE_ENDPOINT:-http://object-storage:9000}
+      QAONGDUR_VISION_OBJECT_STORAGE_ACCESS_KEY: ${VISION_OBJECT_STORAGE_ACCESS_KEY:-minioadmin}
+      QAONGDUR_VISION_OBJECT_STORAGE_SECRET_KEY: ${VISION_OBJECT_STORAGE_SECRET_KEY:-minioadmin}
+      QAONGDUR_VISION_OBJECT_STORAGE_BUCKET: ${VISION_OBJECT_STORAGE_BUCKET:-qaongdur-dev}
+      QAONGDUR_VISION_QUEUE_BROKER_URL: ${VISION_QUEUE_BROKER_URL:-redis://redis:6379/0}
+      QAONGDUR_VISION_QUEUE_RESULT_BACKEND: ${VISION_QUEUE_RESULT_BACKEND:-redis://redis:6379/1}
+      QAONGDUR_VISION_WORKER_ID: ${VISION_WORKER_ID:-}
+      QAONGDUR_VISION_WORKER_NAME: ${VISION_WORKER_NAME:-vision-worker-1}
+      QAONGDUR_VISION_NODE_NAME: ${VISION_NODE_NAME:-local-worker}
+      QAONGDUR_VISION_NODE_SSH_ALIAS: ${VISION_NODE_SSH_ALIAS:-local-worker}
+      QAONGDUR_VISION_NODE_HOSTNAME: ${VISION_NODE_HOSTNAME:-}
+      QAONGDUR_VISION_NODE_DOCKER_VERSION: ${VISION_NODE_DOCKER_VERSION:-}
+      QAONGDUR_VISION_NODE_NVIDIA_RUNTIME_VERSION: ${VISION_NODE_NVIDIA_RUNTIME_VERSION:-}
+      QAONGDUR_VISION_WORKER_QUEUES: ${VISION_WORKER_QUEUES:-vision.cpu,vision.cpu.face}
+      QAONGDUR_VISION_WORKER_CAPACITY_SLOTS: ${VISION_WORKER_CAPACITY_SLOTS:-1}
+      QAONGDUR_VISION_WORKER_HEARTBEAT_INTERVAL_SECONDS: ${VISION_WORKER_HEARTBEAT_INTERVAL_SECONDS:-15}
+      QAONGDUR_VISION_REGISTER_URL: ${VISION_REGISTER_URL:-http://vision-api:8010/api/v1/internal/analytics/workers/register}
+      QAONGDUR_VISION_HEARTBEAT_URL: ${VISION_HEARTBEAT_URL:-http://vision-api:8010/api/v1/internal/analytics/workers/heartbeat}
+      QAONGDUR_VISION_JOB_STATUS_BASE_URL: ${VISION_JOB_STATUS_BASE_URL:-http://vision-api:8010}
+      QAONGDUR_VISION_JOB_RESULTS_BASE_URL: ${VISION_JOB_RESULTS_BASE_URL:-http://vision-api:8010}
+      QAONGDUR_VISION_INTERNAL_API_TIMEOUT_SECONDS: ${VISION_INTERNAL_API_TIMEOUT_SECONDS:-120}
+      QAONGDUR_VISION_INTERNAL_SERVICE_TOKEN: ${QAONGDUR_INTERNAL_SERVICE_TOKEN}
+      QAONGDUR_VISION_DETECTOR_MODEL_NAME: ${VISION_DETECTOR_MODEL_NAME:-yolo26n.pt}
+      QAONGDUR_VISION_DETECTOR_DEVICE: ${VISION_DETECTOR_DEVICE:-cpu}
+      NVIDIA_VISIBLE_DEVICES: ${VISION_NVIDIA_VISIBLE_DEVICES:-}
+      NVIDIA_DRIVER_CAPABILITIES: ${VISION_NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+    volumes:
+      - ../../services/vision/src:/app/src:ro
+      - vision-worker-data:/data
+    command: ["python", "-m", "vision_service.main_worker"]
+    restart: unless-stopped
+
+  face-api:
+    profiles: ["face"]
+    image: qaongdur-face-api:distributed-dev
+    build:
+      context: ../..
+      dockerfile: services/face-api/Dockerfile
+    environment:
+      QAONGDUR_FACE_ENV: production
+      QAONGDUR_FACE_SERVICE_HOST: 0.0.0.0
+      QAONGDUR_FACE_SERVICE_PORT: 8020
+      QAONGDUR_FACE_RUNTIME_DIR: /runtime
+      QAONGDUR_FACE_BOOTSTRAP_ERROR_FILE: /runtime/bootstrap-error.txt
+      QAONGDUR_FACE_INSPIREFACE_REPO: /opt/third_party/InspireFace
+      QAONGDUR_FACE_RESOURCE_PATH: /runtime/resources/pack/Megatron
+      QAONGDUR_FACE_MODEL_NAME: Megatron
+    volumes:
+      - face-runtime:/runtime
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/healthz').read()\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  vision-worker-data:
+  face-runtime:

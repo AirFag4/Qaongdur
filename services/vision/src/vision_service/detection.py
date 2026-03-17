@@ -18,6 +18,26 @@ CLASS_MAP = {
 }
 
 
+def _resolve_runtime_device(requested_device: str) -> tuple[str, str | None]:
+    normalized = requested_device.strip().lower() if requested_device else "cpu"
+    try:
+        import torch
+
+        has_cuda = bool(torch.cuda.is_available())
+    except Exception:
+        has_cuda = False
+
+    if normalized == "auto":
+        if has_cuda:
+            return "cuda:0", None
+        return "cpu", "CUDA unavailable; falling back to CPU."
+
+    if normalized.startswith("cuda") and not has_cuda:
+        return "cpu", f"Requested {normalized} but CUDA is unavailable; falling back to CPU."
+
+    return normalized or "cpu", None
+
+
 @dataclass(slots=True)
 class DetectorStatus:
     available: bool
@@ -31,9 +51,12 @@ class ObjectDetector:
         *,
         model_name: str,
         confidence_threshold: float,
+        device: str,
     ) -> None:
         self._confidence_threshold = confidence_threshold
         self._model_name = model_name
+        self._requested_device = device
+        self._runtime_device = "cpu"
         self._model = None
         self.status = DetectorStatus(
             available=False,
@@ -44,11 +67,15 @@ class ObjectDetector:
         try:
             from ultralytics import YOLO
 
+            self._runtime_device, fallback_detail = _resolve_runtime_device(device)
             self._model = YOLO(model_name)
+            detail = f"Ultralytics detector ready on {self._runtime_device}."
+            if fallback_detail:
+                detail = f"{detail} {fallback_detail}"
             self.status = DetectorStatus(
                 available=True,
                 model_name=model_name,
-                detail="Ultralytics detector ready.",
+                detail=detail,
             )
         except Exception as error:  # pragma: no cover - runtime dependency branch
             LOGGER.warning("Falling back to empty detector: %s", error)
@@ -66,7 +93,7 @@ class ObjectDetector:
             source=frame_bgr,
             classes=sorted(CLASS_MAP.keys()),
             conf=self._confidence_threshold,
-            device="cpu",
+            device=self._runtime_device,
             verbose=False,
         )
         if not results:

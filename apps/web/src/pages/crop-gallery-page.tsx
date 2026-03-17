@@ -51,10 +51,15 @@ const formatBytes = (bytes: number) => {
   return `${bytes} B`;
 };
 
+const DEFAULT_CROP_GALLERY_WINDOW_MINUTES = 24 * 60;
+
 const createDefaultRange = (
   operatorTimeZone: OperatorTimeZonePreference,
 ) => {
-  const range = createRecentInputRangeInTimeZone(operatorTimeZone);
+  const range = createRecentInputRangeInTimeZone(
+    operatorTimeZone,
+    DEFAULT_CROP_GALLERY_WINDOW_MINUTES,
+  );
   return {
     fromAt: range.fromInput,
     toAt: range.toInput,
@@ -830,7 +835,7 @@ export function CropGalleryPage() {
           Search Crops
         </Button>
         <p className="text-xs text-[var(--qa-panel-text-subtle)]">
-          {timeZoneLabel} with a 10 minute default window. {textSearchHint}
+          {timeZoneLabel} with a 24 hour default window. {textSearchHint}
         </p>
         <label
           className={

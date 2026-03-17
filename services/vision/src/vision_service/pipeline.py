@@ -69,7 +69,7 @@ class SegmentTask:
 
 
 class VisionPipelineService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, start_background_threads: bool = True) -> None:
         self._settings = settings
         self._repository = VisionRepository(settings.database_path)
         self._artifact_store = ArtifactStore(
@@ -81,10 +81,12 @@ class VisionPipelineService:
         self._detector = ObjectDetector(
             model_name=settings.detector_model_name,
             confidence_threshold=settings.detector_confidence_threshold,
+            device=settings.detector_device,
         )
         self._embedder = CropEmbedder(
             enabled=settings.embedding_enabled,
             model_name=settings.embedding_model_name,
+            device=settings.embedding_device,
         )
         self._face_embedder = FaceEmbedder(
             enabled=settings.face_enabled,
@@ -127,9 +129,10 @@ class VisionPipelineService:
         except Exception as error:  # pragma: no cover - startup dependency path
             self._latest_source_sync_error = str(error)
             LOGGER.warning("Initial vision source sync failed: %s", error)
-        for worker_thread in self._worker_threads:
-            worker_thread.start()
-        self._scanner_thread.start()
+        if start_background_threads:
+            for worker_thread in self._worker_threads:
+                worker_thread.start()
+            self._scanner_thread.start()
 
     def refresh_sources(self, *, include_retired: bool = False) -> list[dict[str, object]]:
         sources = self._source_client.list_sources()
@@ -967,7 +970,8 @@ class VisionPipelineService:
                 if total_frames > 0 and capture_fps > 0
                 else 0.0
             )
-            frame_interval = max(int(round(capture_fps / sample_fps)), 1)
+            sample_interval_ms = (1000.0 / sample_fps) if sample_fps > 0 else 0.0
+            next_sample_offset_ms = 0.0
             segment_start_dt = datetime.fromisoformat(segment_start_at.replace("Z", "+00:00"))
             processed_tracks = 0
             tracker = ByteTrackManager(
@@ -987,12 +991,17 @@ class VisionPipelineService:
                 if not ok:
                     break
                 frame_index += 1
-                if frame_index % frame_interval != 0:
-                    continue
 
                 offset_ms = int(capture.get(cv2.CAP_PROP_POS_MSEC) or 0)
-                if offset_ms <= 0 and capture_fps > 0:
+                if capture_fps > 0:
                     offset_ms = int((frame_index / capture_fps) * 1000)
+                if sample_interval_ms > 0 and offset_ms + 0.5 < next_sample_offset_ms:
+                    continue
+
+                if sample_interval_ms > 0:
+                    next_sample_offset_ms += sample_interval_ms
+                    while next_sample_offset_ms <= offset_ms:
+                        next_sample_offset_ms += sample_interval_ms
                 last_offset_ms = max(last_offset_ms, offset_ms)
                 captured_at = (segment_start_dt + timedelta(milliseconds=offset_ms)).astimezone(UTC).isoformat()
                 with self._detector_lock:

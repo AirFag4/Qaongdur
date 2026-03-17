@@ -930,6 +930,36 @@ def create_app() -> FastAPI:
         except VisionServiceError as error:
             raise raise_vision_bad_gateway(error) from error
 
+    @app.get("/api/v1/analytics/workers")
+    async def list_analytics_workers(
+        _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
+        vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
+    ) -> dict[str, object]:
+        try:
+            return await vision_client.list_analytics_workers()
+        except VisionServiceError as error:
+            raise raise_vision_bad_gateway(error) from error
+
+    @app.get("/api/v1/analytics/nodes")
+    async def list_analytics_nodes(
+        _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
+        vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
+    ) -> dict[str, object]:
+        try:
+            return await vision_client.list_analytics_nodes()
+        except VisionServiceError as error:
+            raise raise_vision_bad_gateway(error) from error
+
+    @app.get("/api/v1/analytics/queues")
+    async def list_analytics_queues(
+        _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],
+        vision_client: Annotated[VisionServiceClient, Depends(get_vision_service_client)],
+    ) -> dict[str, object]:
+        try:
+            return await vision_client.list_analytics_queues()
+        except VisionServiceError as error:
+            raise raise_vision_bad_gateway(error) from error
+
     @app.get("/api/v1/devices")
     async def list_devices(
         _: Annotated[KeycloakPrincipal, Depends(get_current_principal)],

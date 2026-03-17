@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated, Literal
 
-from pydantic import field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -15,10 +16,40 @@ class Settings(BaseSettings):
     )
 
     env: str = "development"
+    execution_mode: Literal["local", "api", "worker"] = "local"
     service_host: str = "0.0.0.0"
     service_port: int = 8010
     sample_mode: bool = True
     storage_bucket: str = "qaongdur-dev"
+    object_storage_endpoint: str = "http://object-storage:9000"
+    object_storage_access_key: str = "minioadmin"
+    object_storage_secret_key: str = "minioadmin"
+    object_storage_bucket: str = "qaongdur-dev"
+    segment_upload_enabled: bool = False
+    segment_object_prefix: str = "recordings"
+    queue_broker_url: str = "redis://redis:6379/0"
+    queue_result_backend: str = "redis://redis:6379/1"
+    job_default_queue: str = "vision.cpu"
+    job_face_queue: str = "vision.cpu.face"
+    worker_offline_timeout_seconds: int = 60
+    worker_id: str | None = None
+    worker_name: str = "vision-worker-1"
+    node_name: str = "localhost"
+    node_ssh_alias: str = "localhost"
+    node_hostname: str | None = None
+    node_docker_version: str | None = None
+    node_nvidia_runtime_version: str | None = None
+    worker_queues: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["vision.cpu", "vision.cpu.face"]
+    )
+    worker_capacity_slots: int = 1
+    worker_heartbeat_interval_seconds: float = 15.0
+    worker_runtime_dir: str = "./data/worker-runtime"
+    register_url: str = "http://localhost:8010/api/v1/internal/analytics/workers/register"
+    heartbeat_url: str = "http://localhost:8010/api/v1/internal/analytics/workers/heartbeat"
+    job_status_base_url: str = "http://localhost:8010"
+    job_results_base_url: str = "http://localhost:8010"
+    internal_api_timeout_seconds: float = 120.0
     default_site_id: str = "site-local-01"
     control_api_url: str = "http://control-api:8000"
     internal_service_token: str = "qaongdur-internal-dev"
@@ -36,9 +67,10 @@ class Settings(BaseSettings):
     artifacts_dir: str = "./data/artifacts"
     detector_model_name: str = "yolo26n.pt"
     detector_confidence_threshold: float = 0.35
+    detector_device: str = "cpu"
     sample_fps: float = 2.0
     min_sample_fps: float = 1.0
-    max_sample_fps: float = 3.0
+    max_sample_fps: float = 10.0
     tracker_activation_threshold: float = 0.35
     tracker_matching_threshold: float = 0.8
     tracker_lost_buffer_frames: int = 6
@@ -52,6 +84,7 @@ class Settings(BaseSettings):
     frame_max_dimension: int = 960
     embedding_enabled: bool = True
     embedding_model_name: str = "MobileCLIP2-S0"
+    embedding_device: str = "cpu"
     face_enabled: bool = True
     face_min_track_seconds: float = 2.0
     face_model_name: str = "Megatron"
@@ -63,6 +96,13 @@ class Settings(BaseSettings):
     vector_store_object_collection: str = "qaongdur-object-embeddings"
     vector_store_face_collection: str = "qaongdur-face-embeddings"
     purge_retired_mock_history: bool = False
+
+    @field_validator("worker_queues", mode="before")
+    @classmethod
+    def _parse_worker_queues(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return [str(part).strip() for part in value if str(part).strip()]
 
     @field_validator("storage_recording_share_percent")
     @classmethod
@@ -97,6 +137,7 @@ class Settings(BaseSettings):
         Path(self.data_dir).mkdir(parents=True, exist_ok=True)
         Path(self.artifacts_dir).mkdir(parents=True, exist_ok=True)
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(self.worker_runtime_dir).mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache(maxsize=1)

@@ -200,7 +200,7 @@ services:
       QAONGDUR_MEDIA_STORAGE_TOTAL_LIMIT_BYTES: ${MEDIA_STORAGE_TOTAL_LIMIT_BYTES}
       QAONGDUR_MEDIA_STORAGE_RECORDING_SHARE_PERCENT: ${MEDIA_STORAGE_RECORDING_SHARE_PERCENT}
       QAONGDUR_VISION_EMBEDDING_ENABLED: ${VISION_EMBEDDING_ENABLED}
-      QAONGDUR_VISION_SERVICE_URL: http://vision:8010
+      QAONGDUR_VISION_SERVICE_URL: ${VISION_SERVICE_URL:-http://vision:8010}
       QAONGDUR_INTERNAL_SERVICE_TOKEN: ${QAONGDUR_INTERNAL_SERVICE_TOKEN}
     volumes:
       - control-api-data:/data
@@ -258,7 +258,7 @@ services:
       retries: 10
 
   qdrant:
-    profiles: ["vision-cpu"]
+    profiles: ["vision-cpu", "vision-api", "distributed-mock"]
     image: ${QDRANT_IMAGE}
     container_name: qaongdur-qdrant
     ports:

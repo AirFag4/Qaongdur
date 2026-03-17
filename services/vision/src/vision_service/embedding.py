@@ -11,6 +11,25 @@ import numpy as np
 LOGGER = logging.getLogger(__name__)
 
 
+def _resolve_runtime_device(
+    requested_device: str,
+    *,
+    torch_module: object,
+) -> tuple[str, str | None]:
+    normalized = requested_device.strip().lower() if requested_device else "cpu"
+    has_cuda = bool(getattr(torch_module.cuda, "is_available")())
+
+    if normalized == "auto":
+        if has_cuda:
+            return "cuda:0", None
+        return "cpu", "CUDA unavailable; falling back to CPU."
+
+    if normalized.startswith("cuda") and not has_cuda:
+        return "cpu", f"Requested {normalized} but CUDA is unavailable; falling back to CPU."
+
+    return normalized or "cpu", None
+
+
 @dataclass(slots=True)
 class EmbeddingResult:
     status: str
@@ -19,9 +38,11 @@ class EmbeddingResult:
 
 
 class CropEmbedder:
-    def __init__(self, *, enabled: bool, model_name: str) -> None:
+    def __init__(self, *, enabled: bool, model_name: str, device: str) -> None:
         self._enabled = enabled
         self._model_name = model_name
+        self._requested_device = device
+        self._runtime_device = "cpu"
         self._model = None
         self._preprocess = None
         self._tokenizer = None
@@ -53,7 +74,7 @@ class CropEmbedder:
 
         rgb_image = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
         pil_image = self._Image.fromarray(rgb_image)
-        tensor = self._preprocess(pil_image).unsqueeze(0)
+        tensor = self._preprocess(pil_image).unsqueeze(0).to(self._runtime_device)
         with self._torch.no_grad():
             features = self._model.encode_image(tensor)
             features = features / features.norm(dim=-1, keepdim=True)
@@ -85,6 +106,8 @@ class CropEmbedder:
             )
 
         tokens = self._tokenizer([normalized])
+        if hasattr(tokens, "to"):
+            tokens = tokens.to(self._runtime_device)
         with self._torch.no_grad():
             features = self._model.encode_text(tokens)
             features = features / features.norm(dim=-1, keepdim=True)
@@ -131,11 +154,17 @@ class CropEmbedder:
                 torch = importlib.import_module("torch")
                 image_module = importlib.import_module("PIL.Image")
 
-                torch.set_num_threads(1)
+                self._runtime_device, fallback_detail = _resolve_runtime_device(
+                    self._requested_device,
+                    torch_module=torch,
+                )
+                if self._runtime_device == "cpu":
+                    torch.set_num_threads(1)
                 model, _, preprocess = open_clip.create_model_and_transforms(
                     self._model_name,
                     pretrained="dfndr2b",
                 )
+                model = model.to(self._runtime_device)
                 model.eval()
                 self._model = model
                 self._preprocess = preprocess
@@ -144,7 +173,12 @@ class CropEmbedder:
                 self._Image = image_module
                 self.runtime_model_name = self._model_name
                 self.runtime_state = "ready"
-                self.runtime_detail = f"{self._model_name} ready for image and text embeddings."
+                self.runtime_detail = (
+                    f"{self._model_name} ready for image and text embeddings on "
+                    f"{self._runtime_device}."
+                )
+                if fallback_detail:
+                    self.runtime_detail = f"{self.runtime_detail} {fallback_detail}"
                 return True
             except Exception as error:  # pragma: no cover - runtime dependency branch
                 LOGGER.warning("Falling back to histogram embedder: %s", error)

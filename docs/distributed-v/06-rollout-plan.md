@@ -4,6 +4,39 @@
 
 The safest path is to preserve the current product behavior while replacing one assumption at a time.
 
+## Current Rollout Status On 2026-03-17
+
+The rollout is now part-way through the plan rather than only planned work.
+
+- Phase 1 is partially done through `vision-api`: finalized segments are uploaded to MinIO and queued for distributed processing
+- Phase 2 is live: remote workers on `ati-local-home` are registered, heartbeating, and consuming Celery jobs
+- Phase 3 is not done: results are still persisted as track-level payloads, not the full sampled-frame observation model described in this doc set
+- Phase 4 is now partially exercised in practice: multiple remote workers were run against one broker during validation, and the Compose-managed worker has been rotated onto the `/app/src` code path, but old queue rows and temporary validation workers still need cleanup
+- Phase 5 is not live yet: the worker on `ati-local-home` was started without `face-api`
+- Phase 6 is not done yet: onboarding was still manual `ssh`, `rsync`, `docker load`, and `docker compose`, not Ansible
+- Phase 7 is not done: the distributed path still depends on the `vision-api` SQLite volume and old local-mode data is still present
+
+What was proven live:
+
+- central `vision-api` health and query routes are reachable locally and from `ati-local-home`
+- authenticated crop-track reads through `control-api` work again
+- the crop-gallery default range now exposes distributed crop tracks without manual time-range expansion
+- remote worker registration and heartbeat callbacks work
+- remote workers can pull real Redis tasks, write embeddings into central Qdrant, and post final results back into `vision-api`
+- CUDA is live on the remote RTX 3060 host during worker execution
+- the central scheduler is issuing `sampleFps=10.0`
+- the central stack now runs with `VISION_FACE_ENABLED=false`, so new jobs route to `vision.cpu` instead of continuing to label fresh work as face-required
+- the previous frame-interval sampler was measured at `framesSampled=450` on a 60 second, 900 frame segment
+- the patched timestamp-based sampler was then measured live at `framesSampled=600` on a 60 second, 900 frame segment on the Compose-managed worker, which matches the intended 10 FPS target
+
+What still needs a follow-up pass:
+
+- migrate metadata ownership from SQLite to Postgres
+- separate `recording-sync` from `vision-api`
+- clean up stale `vision.local` rows so queue status reflects only the distributed runtime
+- decide how aggressively to drain or discard the historical `vision.cpu.face` and `vision.local` backlog from the earlier local-only path
+- reduce central CPU further by separating segment upload or pacing historical backlog processing now that re-hashing and disappearing-file scanner failures have been fixed
+
 ## Phase 0: schema-first groundwork
 
 Deliver:

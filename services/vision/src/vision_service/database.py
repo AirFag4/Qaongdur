@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Lock
 from typing import Any
+from uuid import NAMESPACE_DNS, uuid5
 
 
 SCHEMA = """
@@ -38,10 +39,52 @@ CREATE TABLE IF NOT EXISTS processing_job (
   status TEXT NOT NULL,
   source_ids_json TEXT NOT NULL,
   sampled_fps REAL NOT NULL,
+  queue_name TEXT,
+  segment_path TEXT,
+  assigned_worker_id TEXT,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
   track_count INTEGER NOT NULL DEFAULT 0,
   started_at TEXT NOT NULL,
   finished_at TEXT,
   detail TEXT
+);
+
+CREATE TABLE IF NOT EXISTS analytic_node (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  ssh_alias TEXT,
+  hostname TEXT NOT NULL,
+  status TEXT NOT NULL,
+  drain_mode INTEGER NOT NULL DEFAULT 0,
+  gpu_available INTEGER NOT NULL DEFAULT 0,
+  gpu_name TEXT,
+  docker_version TEXT,
+  nvidia_runtime_version TEXT,
+  last_heartbeat_at TEXT,
+  first_registered_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS analytic_worker (
+  id TEXT PRIMARY KEY,
+  node_id TEXT NOT NULL REFERENCES analytic_node(id) ON DELETE CASCADE,
+  worker_name TEXT NOT NULL,
+  queue_names_json TEXT NOT NULL,
+  status TEXT NOT NULL,
+  capacity_slots INTEGER NOT NULL DEFAULT 1,
+  active_jobs INTEGER NOT NULL DEFAULT 0,
+  queue_depth_hint INTEGER NOT NULL DEFAULT 0,
+  runtime_json TEXT,
+  supports_face INTEGER NOT NULL DEFAULT 0,
+  supports_text_embedding INTEGER NOT NULL DEFAULT 0,
+  supports_image_embedding INTEGER NOT NULL DEFAULT 0,
+  supports_gpu INTEGER NOT NULL DEFAULT 0,
+  face_model TEXT,
+  embedding_model TEXT,
+  detector_model TEXT,
+  last_heartbeat_at TEXT,
+  registered_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS recording_segment (
@@ -54,10 +97,15 @@ CREATE TABLE IF NOT EXISTS recording_segment (
   segment_end_at TEXT,
   duration_sec REAL,
   byte_size INTEGER NOT NULL DEFAULT 0,
+  sha256 TEXT,
+  object_bucket TEXT,
+  object_key TEXT,
+  storage_status TEXT NOT NULL DEFAULT 'local',
   status TEXT NOT NULL,
   job_id TEXT REFERENCES processing_job(id) ON DELETE SET NULL,
   detail TEXT,
   created_at TEXT NOT NULL,
+  uploaded_at TEXT,
   processed_at TEXT
 );
 
@@ -130,6 +178,9 @@ CREATE TABLE IF NOT EXISTS track_face_embedding (
 CREATE INDEX IF NOT EXISTS idx_track_last_seen_at ON track(last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_track_camera_time ON track(camera_id, last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_segment_source_time ON recording_segment(source_id, segment_start_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analytic_worker_status ON analytic_worker(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analytic_worker_node ON analytic_worker(node_id, status);
+CREATE INDEX IF NOT EXISTS idx_analytic_node_status ON analytic_node(status, updated_at DESC);
 """
 
 
@@ -168,6 +219,31 @@ class VisionRepository:
         self._ensure_column(connection, "track", "last_point_json", "TEXT")
         self._ensure_column(connection, "track", "face_count", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column(connection, "track", "face_detail", "TEXT")
+        self._ensure_column(connection, "processing_job", "queue_name", "TEXT")
+        self._ensure_column(connection, "processing_job", "segment_path", "TEXT")
+        self._ensure_column(connection, "processing_job", "assigned_worker_id", "TEXT")
+        self._ensure_column(
+            connection,
+            "processing_job",
+            "attempt_count",
+            "INTEGER NOT NULL DEFAULT 0",
+        )
+        self._ensure_column(connection, "recording_segment", "sha256", "TEXT")
+        self._ensure_column(connection, "recording_segment", "object_bucket", "TEXT")
+        self._ensure_column(connection, "recording_segment", "object_key", "TEXT")
+        self._ensure_column(
+            connection,
+            "recording_segment",
+            "storage_status",
+            "TEXT NOT NULL DEFAULT 'local'",
+        )
+        self._ensure_column(connection, "recording_segment", "uploaded_at", "TEXT")
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_recording_segment_object
+            ON recording_segment(object_bucket, object_key)
+            """
+        )
 
     def _ensure_column(
         self,
@@ -350,6 +426,483 @@ class VisionRepository:
             "finishedAt": row["finished_at"],
             "detail": row["detail"],
         }
+
+    def create_distributed_job(
+        self,
+        *,
+        job_id: str,
+        source_ids: list[str],
+        sampled_fps: float,
+        requested_at: str,
+        queue_name: str,
+        segment_path: str,
+        detail: str | None = None,
+    ) -> bool:
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO processing_job (
+                  id, status, source_ids_json, sampled_fps, queue_name,
+                  segment_path, started_at, detail
+                ) VALUES (
+                  ?, 'queued', ?, ?, ?, ?, ?, ?
+                )
+                """,
+                (
+                    job_id,
+                    json.dumps(source_ids),
+                    sampled_fps,
+                    queue_name,
+                    segment_path,
+                    requested_at,
+                    detail,
+                ),
+            )
+            if cursor.rowcount > 0:
+                connection.execute(
+                    """
+                    UPDATE recording_segment
+                    SET status = 'queued', job_id = ?, detail = ?
+                    WHERE segment_path = ?
+                    """,
+                    (job_id, detail, segment_path),
+                )
+        return cursor.rowcount > 0
+
+    def update_job_status(
+        self,
+        *,
+        job_id: str,
+        status: str,
+        worker_id: str | None,
+        detail: str | None,
+        checked_at: str,
+        track_count: int | None = None,
+        duration_sec: float | None = None,
+    ) -> None:
+        with self._lock, self._connect() as connection:
+            job_row = connection.execute(
+                "SELECT segment_path FROM processing_job WHERE id = ?",
+                (job_id,),
+            ).fetchone()
+            if job_row is None:
+                return
+
+            finished_at = checked_at if status in {"completed", "failed", "retryable-failed"} else None
+            attempt_sql = "attempt_count = attempt_count + 1," if status == "running" else ""
+            connection.execute(
+                f"""
+                UPDATE processing_job
+                SET status = ?,
+                    assigned_worker_id = COALESCE(?, assigned_worker_id),
+                    {attempt_sql}
+                    detail = ?,
+                    track_count = COALESCE(?, track_count),
+                    finished_at = COALESCE(?, finished_at)
+                WHERE id = ?
+                """,
+                (
+                    status,
+                    worker_id,
+                    detail,
+                    track_count,
+                    finished_at,
+                    job_id,
+                ),
+            )
+
+            segment_path = str(job_row["segment_path"])
+            if status == "running":
+                connection.execute(
+                    """
+                    UPDATE recording_segment
+                    SET status = 'processing', detail = ?
+                    WHERE segment_path = ?
+                    """,
+                    (detail, segment_path),
+                )
+            elif status == "completed":
+                segment_row = connection.execute(
+                    """
+                    SELECT segment_start_at
+                    FROM recording_segment
+                    WHERE segment_path = ?
+                    """,
+                    (segment_path,),
+                ).fetchone()
+                segment_end_at: str | None = None
+                if segment_row is not None and segment_row["segment_start_at"] and duration_sec is not None:
+                    segment_end_at = (
+                        datetime.fromisoformat(str(segment_row["segment_start_at"]).replace("Z", "+00:00"))
+                        + timedelta(seconds=duration_sec)
+                    ).astimezone(UTC).isoformat()
+                connection.execute(
+                    """
+                    UPDATE recording_segment
+                    SET status = 'processed',
+                        processed_at = ?,
+                        duration_sec = COALESCE(?, duration_sec),
+                        segment_end_at = COALESCE(?, segment_end_at),
+                        detail = ?
+                    WHERE segment_path = ?
+                    """,
+                    (
+                        checked_at,
+                        duration_sec,
+                        segment_end_at,
+                        detail,
+                        segment_path,
+                    ),
+                )
+            elif status in {"failed", "retryable-failed"}:
+                connection.execute(
+                    """
+                    UPDATE recording_segment
+                    SET status = 'failed', processed_at = ?, detail = ?
+                    WHERE segment_path = ?
+                    """,
+                    (checked_at, detail, segment_path),
+                )
+
+    def register_uploaded_segment(
+        self,
+        *,
+        segment_path: str,
+        source_id: str,
+        path_name: str,
+        camera_id: str,
+        camera_name: str,
+        segment_start_at: str,
+        byte_size: int,
+        sha256: str,
+        object_bucket: str,
+        object_key: str,
+        created_at: str,
+        uploaded_at: str,
+    ) -> bool:
+        with self._lock, self._connect() as connection:
+            existing = connection.execute(
+                "SELECT segment_path FROM recording_segment WHERE segment_path = ?",
+                (segment_path,),
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO recording_segment (
+                  segment_path, source_id, path_name, camera_id, camera_name,
+                  segment_start_at, byte_size, sha256, object_bucket, object_key,
+                  storage_status, status, created_at, uploaded_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploaded', 'pending', ?, ?)
+                ON CONFLICT(segment_path) DO UPDATE SET
+                  source_id = excluded.source_id,
+                  path_name = excluded.path_name,
+                  camera_id = excluded.camera_id,
+                  camera_name = excluded.camera_name,
+                  segment_start_at = excluded.segment_start_at,
+                  byte_size = excluded.byte_size,
+                  sha256 = excluded.sha256,
+                  object_bucket = excluded.object_bucket,
+                  object_key = excluded.object_key,
+                  storage_status = excluded.storage_status,
+                  uploaded_at = excluded.uploaded_at
+                """,
+                (
+                    segment_path,
+                    source_id,
+                    path_name,
+                    camera_id,
+                    camera_name,
+                    segment_start_at,
+                    byte_size,
+                    sha256,
+                    object_bucket,
+                    object_key,
+                    created_at,
+                    uploaded_at,
+                ),
+            )
+        return existing is None
+
+    def register_analytic_worker(
+        self,
+        *,
+        worker_id: str,
+        node_name: str,
+        ssh_alias: str | None,
+        hostname: str,
+        gpu_available: bool,
+        gpu_name: str | None,
+        docker_version: str | None,
+        nvidia_runtime_version: str | None,
+        worker_name: str,
+        queue_names: list[str],
+        capacity_slots: int,
+        supports_face: bool,
+        supports_text_embedding: bool,
+        supports_image_embedding: bool,
+        supports_gpu: bool,
+        face_model: str | None,
+        embedding_model: str | None,
+        detector_model: str | None,
+        registered_at: str,
+    ) -> None:
+        node_id = str(uuid5(NAMESPACE_DNS, node_name))
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO analytic_node (
+                  id, name, ssh_alias, hostname, status, drain_mode, gpu_available,
+                  gpu_name, docker_version, nvidia_runtime_version, last_heartbeat_at,
+                  first_registered_at, updated_at
+                ) VALUES (?, ?, ?, ?, 'healthy', 0, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                  ssh_alias = excluded.ssh_alias,
+                  hostname = excluded.hostname,
+                  status = 'healthy',
+                  gpu_available = excluded.gpu_available,
+                  gpu_name = excluded.gpu_name,
+                  docker_version = excluded.docker_version,
+                  nvidia_runtime_version = excluded.nvidia_runtime_version,
+                  last_heartbeat_at = excluded.last_heartbeat_at,
+                  updated_at = excluded.updated_at
+                """,
+                (
+                    node_id,
+                    node_name,
+                    ssh_alias,
+                    hostname,
+                    int(gpu_available),
+                    gpu_name,
+                    docker_version,
+                    nvidia_runtime_version,
+                    registered_at,
+                    registered_at,
+                    registered_at,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO analytic_worker (
+                  id, node_id, worker_name, queue_names_json, status, capacity_slots,
+                  active_jobs, queue_depth_hint, runtime_json, supports_face,
+                  supports_text_embedding, supports_image_embedding, supports_gpu,
+                  face_model, embedding_model, detector_model, last_heartbeat_at,
+                  registered_at, updated_at
+                ) VALUES (?, ?, ?, ?, 'healthy', ?, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  node_id = excluded.node_id,
+                  worker_name = excluded.worker_name,
+                  queue_names_json = excluded.queue_names_json,
+                  status = 'healthy',
+                  capacity_slots = excluded.capacity_slots,
+                  supports_face = excluded.supports_face,
+                  supports_text_embedding = excluded.supports_text_embedding,
+                  supports_image_embedding = excluded.supports_image_embedding,
+                  supports_gpu = excluded.supports_gpu,
+                  face_model = excluded.face_model,
+                  embedding_model = excluded.embedding_model,
+                  detector_model = excluded.detector_model,
+                  last_heartbeat_at = excluded.last_heartbeat_at,
+                  updated_at = excluded.updated_at
+                """,
+                (
+                    worker_id,
+                    node_id,
+                    worker_name,
+                    json.dumps(queue_names),
+                    capacity_slots,
+                    int(supports_face),
+                    int(supports_text_embedding),
+                    int(supports_image_embedding),
+                    int(supports_gpu),
+                    face_model,
+                    embedding_model,
+                    detector_model,
+                    registered_at,
+                    registered_at,
+                    registered_at,
+                ),
+            )
+
+    def heartbeat_analytic_worker(
+        self,
+        *,
+        worker_id: str,
+        status: str,
+        active_jobs: int,
+        queue_depth_hint: int,
+        runtime: dict[str, Any] | None,
+        checked_at: str,
+    ) -> None:
+        with self._lock, self._connect() as connection:
+            worker_row = connection.execute(
+                "SELECT node_id FROM analytic_worker WHERE id = ?",
+                (worker_id,),
+            ).fetchone()
+            if worker_row is None:
+                return
+            connection.execute(
+                """
+                UPDATE analytic_worker
+                SET status = ?, active_jobs = ?, queue_depth_hint = ?, runtime_json = ?,
+                    last_heartbeat_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    status,
+                    active_jobs,
+                    queue_depth_hint,
+                    json.dumps(runtime or {}),
+                    checked_at,
+                    checked_at,
+                    worker_id,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE analytic_node
+                SET status = ?, last_heartbeat_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (status, checked_at, checked_at, str(worker_row["node_id"])),
+            )
+
+    def mark_stale_workers_offline(self, *, offline_before: str) -> None:
+        with self._lock, self._connect() as connection:
+            stale_workers = connection.execute(
+                """
+                SELECT id, node_id
+                FROM analytic_worker
+                WHERE last_heartbeat_at IS NULL OR last_heartbeat_at < ?
+                """,
+                (offline_before,),
+            ).fetchall()
+            if not stale_workers:
+                return
+            worker_ids = [str(row["id"]) for row in stale_workers]
+            node_ids = {str(row["node_id"]) for row in stale_workers}
+            placeholders = ", ".join("?" for _ in worker_ids)
+            connection.execute(
+                f"""
+                UPDATE analytic_worker
+                SET status = 'offline', updated_at = ?
+                WHERE id IN ({placeholders})
+                """,
+                [datetime.now(tz=UTC).isoformat(), *worker_ids],
+            )
+            for node_id in node_ids:
+                active_row = connection.execute(
+                    """
+                    SELECT COUNT(*) AS active_count
+                    FROM analytic_worker
+                    WHERE node_id = ? AND status != 'offline'
+                    """,
+                    (node_id,),
+                ).fetchone()
+                if int(active_row["active_count"] if active_row else 0) == 0:
+                    connection.execute(
+                        """
+                        UPDATE analytic_node
+                        SET status = 'offline', updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (datetime.now(tz=UTC).isoformat(), node_id),
+                    )
+
+    def list_analytic_workers(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                  worker.*,
+                  node.name AS node_name,
+                  node.ssh_alias AS node_ssh_alias,
+                  node.hostname AS node_hostname,
+                  node.gpu_available AS node_gpu_available,
+                  node.gpu_name AS node_gpu_name,
+                  node.docker_version AS node_docker_version,
+                  node.nvidia_runtime_version AS node_nvidia_runtime_version
+                FROM analytic_worker AS worker
+                JOIN analytic_node AS node ON node.id = worker.node_id
+                ORDER BY worker.updated_at DESC
+                """
+            ).fetchall()
+        workers: list[dict[str, Any]] = []
+        for row in rows:
+            payload = dict(row)
+            payload["queue_names"] = json.loads(payload["queue_names_json"])
+            payload["runtime"] = json.loads(payload["runtime_json"]) if payload.get("runtime_json") else {}
+            workers.append(payload)
+        return workers
+
+    def list_analytic_nodes(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                  node.*,
+                  COUNT(worker.id) AS worker_count,
+                  SUM(CASE WHEN worker.status = 'healthy' THEN 1 ELSE 0 END) AS healthy_worker_count,
+                  SUM(CASE WHEN worker.status = 'offline' THEN 1 ELSE 0 END) AS offline_worker_count
+                FROM analytic_node AS node
+                LEFT JOIN analytic_worker AS worker ON worker.node_id = node.id
+                GROUP BY node.id
+                ORDER BY node.updated_at DESC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_queue_status(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                  COALESCE(queue_name, 'vision.local') AS queue_name,
+                  SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued_count,
+                  SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running_count,
+                  SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
+                  SUM(CASE WHEN status IN ('failed', 'retryable-failed') THEN 1 ELSE 0 END) AS failed_count
+                FROM processing_job
+                GROUP BY COALESCE(queue_name, 'vision.local')
+                ORDER BY queue_name ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_recording_segment_index(self) -> dict[str, dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                  segment_path,
+                  byte_size,
+                  sha256,
+                  object_bucket,
+                  object_key,
+                  storage_status,
+                  status,
+                  job_id
+                FROM recording_segment
+                """
+            ).fetchall()
+        return {
+            str(row["segment_path"]): dict(row)
+            for row in rows
+        }
+
+    def delete_tracks_for_job(self, *, job_id: str) -> list[str]:
+        with self._lock, self._connect() as connection:
+            artifact_rows = connection.execute(
+                """
+                SELECT artifact.relative_path
+                FROM storage_artifact AS artifact
+                JOIN track ON track.id = artifact.track_id
+                WHERE track.job_id = ?
+                """,
+                (job_id,),
+            ).fetchall()
+            deleted_paths = [str(row["relative_path"]) for row in artifact_rows]
+            connection.execute("DELETE FROM track WHERE job_id = ?", (job_id,))
+        return deleted_paths
 
     def register_segment(
         self,

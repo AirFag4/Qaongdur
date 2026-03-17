@@ -4,12 +4,15 @@ version = "0.1.0"
 description = "Qaongdur vision pipeline scaffold and demo ingestion service."
 requires-python = ">=3.11"
 dependencies = [
+  "celery[redis]>=5.4.0",
   "numpy>=2.1.0",
   "opencv-python>=4.10.0",
   "Pillow>=11.1.0",
   "fastapi>=0.115.0",
   "httpx>=0.28.0",
+  "minio>=7.2.8",
   "pydantic-settings>=2.7.0",
+  "psutil>=7.0.0",
   "supervision==0.27.0.post1",
   "uvicorn[standard]>=0.34.0",
 ]
@@ -25,6 +28,8 @@ models = [
 
 [project.scripts]
 qaongdur-vision = "vision_service.main:run"
+qaongdur-vision-api = "vision_service.main_api:run"
+qaongdur-vision-worker = "vision_service.main_worker:run"
 
 [build-system]
 requires = ["hatchling"]

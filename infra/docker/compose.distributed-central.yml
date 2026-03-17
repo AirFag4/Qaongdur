@@ -1,0 +1,86 @@
+services:
+  control-api:
+    environment:
+      QAONGDUR_VISION_SERVICE_URL: http://vision-api:8010
+
+  vision-api:
+    profiles: ["vision-api", "distributed-mock"]
+    image: qaongdur-vision-runtime:distributed-dev
+    build:
+      context: ../..
+      dockerfile: services/vision/Dockerfile
+    environment:
+      QAONGDUR_VISION_ENV: production
+      QAONGDUR_VISION_EXECUTION_MODE: api
+      QAONGDUR_VISION_SERVICE_HOST: 0.0.0.0
+      QAONGDUR_VISION_SERVICE_PORT: 8010
+      QAONGDUR_VISION_SAMPLE_MODE: "true"
+      QAONGDUR_VISION_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET}
+      QAONGDUR_VISION_OBJECT_STORAGE_ENDPOINT: ${VISION_OBJECT_STORAGE_ENDPOINT:-http://object-storage:9000}
+      QAONGDUR_VISION_OBJECT_STORAGE_ACCESS_KEY: ${VISION_OBJECT_STORAGE_ACCESS_KEY:-minioadmin}
+      QAONGDUR_VISION_OBJECT_STORAGE_SECRET_KEY: ${VISION_OBJECT_STORAGE_SECRET_KEY:-minioadmin}
+      QAONGDUR_VISION_OBJECT_STORAGE_BUCKET: ${VISION_OBJECT_STORAGE_BUCKET:-qaongdur-dev}
+      QAONGDUR_VISION_SEGMENT_UPLOAD_ENABLED: ${VISION_SEGMENT_UPLOAD_ENABLED:-true}
+      QAONGDUR_VISION_SEGMENT_OBJECT_PREFIX: ${VISION_SEGMENT_OBJECT_PREFIX:-recordings}
+      QAONGDUR_VISION_DEFAULT_SITE_ID: site-local-01
+      QAONGDUR_VISION_MOCK_VIDEO_DIR: /mock-videos
+      QAONGDUR_VISION_MOCK_VIDEO_RTSP_BASE_URL: rtsp://mediamtx:8554
+      QAONGDUR_VISION_MOCK_VIDEO_PATH_PREFIX: ${MOCK_VIDEO_PATH_PREFIX}
+      QAONGDUR_VISION_MOCK_VIDEO_USE_VMS: "true"
+      QAONGDUR_VISION_DATA_DIR: /data
+      QAONGDUR_VISION_DATABASE_PATH: /data/vision.sqlite3
+      QAONGDUR_VISION_ARTIFACTS_DIR: /data/artifacts
+      QAONGDUR_VISION_WORKER_RUNTIME_DIR: /data/worker-runtime
+      QAONGDUR_VISION_SAMPLE_FPS: ${VISION_SAMPLE_FPS}
+      QAONGDUR_VISION_MAX_SAMPLE_FPS: ${VISION_MAX_SAMPLE_FPS:-10.0}
+      QAONGDUR_VISION_STORAGE_TOTAL_LIMIT_BYTES: ${MEDIA_STORAGE_TOTAL_LIMIT_BYTES}
+      QAONGDUR_VISION_STORAGE_RECORDING_SHARE_PERCENT: ${MEDIA_STORAGE_RECORDING_SHARE_PERCENT}
+      QAONGDUR_VISION_EMBEDDING_ENABLED: ${VISION_EMBEDDING_ENABLED}
+      QAONGDUR_VISION_FACE_ENABLED: ${VISION_FACE_ENABLED}
+      QAONGDUR_VISION_FACE_MIN_TRACK_SECONDS: ${VISION_FACE_MIN_TRACK_SECONDS}
+      QAONGDUR_VISION_FACE_MODEL_NAME: Megatron
+      QAONGDUR_VISION_FACE_SERVICE_URL: ${VISION_FACE_SERVICE_URL:-http://face-api:8020}
+      QAONGDUR_VISION_CONTROL_API_URL: http://control-api:8000
+      QAONGDUR_VISION_INTERNAL_SERVICE_TOKEN: ${QAONGDUR_INTERNAL_SERVICE_TOKEN}
+      QAONGDUR_VISION_RECORDINGS_DIR: /recordings
+      QAONGDUR_VISION_SEGMENT_POLL_INTERVAL_SECONDS: ${VISION_SEGMENT_POLL_INTERVAL_SECONDS}
+      QAONGDUR_VISION_SEGMENT_MIN_AGE_SECONDS: ${VISION_SEGMENT_MIN_AGE_SECONDS}
+      QAONGDUR_VISION_MOCK_VIDEO_MAX_SOURCES: ${MOCK_VIDEO_MAX_SOURCES:-1}
+      QAONGDUR_VISION_PURGE_RETIRED_MOCK_HISTORY: ${VISION_PURGE_RETIRED_MOCK_HISTORY:-false}
+      QAONGDUR_VISION_VECTOR_STORE_ENABLED: "true"
+      QAONGDUR_VISION_VECTOR_STORE_URL: http://qdrant:6333
+      QAONGDUR_VISION_QUEUE_BROKER_URL: ${VISION_QUEUE_BROKER_URL:-redis://redis:6379/0}
+      QAONGDUR_VISION_QUEUE_RESULT_BACKEND: ${VISION_QUEUE_RESULT_BACKEND:-redis://redis:6379/1}
+      QAONGDUR_VISION_JOB_DEFAULT_QUEUE: ${VISION_JOB_DEFAULT_QUEUE:-vision.cpu}
+      QAONGDUR_VISION_JOB_FACE_QUEUE: ${VISION_JOB_FACE_QUEUE:-vision.cpu.face}
+      QAONGDUR_VISION_WORKER_OFFLINE_TIMEOUT_SECONDS: ${VISION_WORKER_OFFLINE_TIMEOUT_SECONDS:-60}
+    volumes:
+      - ../../../Video:/mock-videos:ro
+      - ../../services/vision/src:/app/src:ro
+      - mediamtx-recordings:/recordings:ro
+      - vision-data:/data
+    ports:
+      - "${VISION_PORT}:8010"
+    command: ["uvicorn", "vision_service.main_api:app", "--app-dir", "src", "--host", "0.0.0.0", "--port", "8010"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      object-storage:
+        condition: service_started
+      mediamtx:
+        condition: service_started
+      control-api:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/healthz').read()\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10

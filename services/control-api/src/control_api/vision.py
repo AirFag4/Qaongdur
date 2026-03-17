@@ -97,6 +97,15 @@ class VisionServiceClient:
             payload["imageBase64"] = image_base64
         return await self._post_json("/api/v1/vision/crop-search", payload)
 
+    async def list_analytics_workers(self) -> dict[str, object]:
+        return await self._get_json("/api/v1/analytics/workers")
+
+    async def list_analytics_nodes(self) -> dict[str, object]:
+        return await self._get_json("/api/v1/analytics/nodes")
+
+    async def list_analytics_queues(self) -> dict[str, object]:
+        return await self._get_json("/api/v1/analytics/queues")
+
     async def _get_json(
         self,
         path: str,
